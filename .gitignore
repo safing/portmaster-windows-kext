@@ -1,0 +1,14 @@
+*.o
+/Divert.udb
+/*.udb
+*.log
+*.wrn
+.vs
+/install
+log
+/sys/objfre_win7_amd64
+/col/tmp
+/test/tmp
+
+# os
+.DS_Store
