@@ -1,1 +1,5 @@
 All files in this repository (unless otherwise noted) are authored, owned and copyrighted by Safing ICS Technologies GmbH (Austria).
+
+Parts of this repository (mainly build system related things) are forked from the WinDivert project: https://github.com/basil00/Divert
+These portions are copyrighted by "basil": https://github.com/basil00 https://www.reqrypt.org/
+The exact fork commit is: https://github.com/basil00/Divert/commit/22a5ad0996e8fb1ab4b02b748ea00d15cf9d6a76
