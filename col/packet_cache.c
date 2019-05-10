@@ -27,8 +27,10 @@ int create_packet_cache(uint32_t max_size, packet_cache_t** packet_cache) {
     packet_cache_t* new;
 
     if (!max_size) {
+        ERR("create_packet_cache");
         return 1;
     }
+    INFO("create_packet_cache with size %d", max_size);
 
     new = _ALLOC(sizeof(packet_cache_t), 1);
     if (!new) {
@@ -54,17 +56,22 @@ int create_packet_cache(uint32_t max_size, packet_cache_t** packet_cache) {
  */
 int clean_packet_cache(packet_cache_t* packet_cache, pportmaster_packet_info * packet_info, void** packet) {
     if(!packet_cache) {
+        ERR("clean_packet_cache - invalid params");
         return 1;
     }
 
-    if (packet_cache->size <= packet_cache->max_size) {
+    if (packet_cache->size <= packet_cache->max_size) { // '<=' is correct ,-)
+        INFO("clean_packet_cache - current size= %d, max_size=%d -> nothing to free", packet_cache->size, packet_cache->max_size);
         return 1;
     }
+    
+    INFO("clean_packet_cache - current size= %d, max_size=%d -> trying to drop last packet",  packet_cache->size, packet_cache->max_size);
 
     if (packet_cache->tail) {
         // get last item
         packet_cache_item_t* last_item = packet_cache->tail;
 
+        INFO("clean_packet_cache - tail exists (size=%d)-> trying to free one packet", packet_cache->size);
         // remove from list
         if (last_item->prev) {
             // reconnect tail if there is an item left
@@ -82,6 +89,9 @@ int clean_packet_cache(packet_cache_t* packet_cache, pportmaster_packet_info * p
 
         // free
         _FREE(last_item);
+        packet_cache->size--;  // Decrement size, otherwise cache will become useless eventually 
+                               // so that every packet will be dropped
+        INFO("clean_packet_cache - item freed, size=%d", packet_cache->size);
 
         return 0;
     }
@@ -98,6 +108,7 @@ int clean_packet_cache(packet_cache_t* packet_cache, pportmaster_packet_info * p
  */
 int teardown_packet_cache(packet_cache_t* packet_cache) {
     // FIXME: implement
+    WARN("teardown_packet_cache not yet implemented");
     return 0;
 }
 
@@ -112,12 +123,15 @@ int teardown_packet_cache(packet_cache_t* packet_cache) {
  */
 uint32_t register_packet(packet_cache_t* packet_cache, pportmaster_packet_info  packet_info, void* packet, size_t packet_len) {
     packet_cache_item_t *new_item;
+    DEBUG("register_packet called");
     if(!packet_cache || !packet_info || !packet) {
+        ERR("register_packet - invalid params");
         return 0;
     }
 
     new_item = _ALLOC(sizeof(packet_cache_item_t), 1);
     if(!new_item) {
+        ERR("register_packet - could not allocate new_item");
         return 0;
     }
 
@@ -160,6 +174,7 @@ uint32_t register_packet(packet_cache_t* packet_cache, pportmaster_packet_info  
 int retrieve_packet(packet_cache_t* packet_cache, uint32_t packet_id, pportmaster_packet_info * packet_info, void** packet, size_t* packet_len) {
     packet_cache_item_t *item;
     item = packet_cache->head;
+    DEBUG("retrieve_packet called");
     while (item) {
         if (packet_id == item->packet_id) {
             // set return values
@@ -201,6 +216,7 @@ int retrieve_packet(packet_cache_t* packet_cache, uint32_t packet_id, pportmaste
  */
 int get_packet(packet_cache_t* packet_cache, uint32_t packet_id, void** packet, size_t* packet_len) {
     packet_cache_item_t *item;
+    DEBUG("get_packet called");
     item = packet_cache->head;
     while (item) {
         if (packet_id == item->packet_id) {

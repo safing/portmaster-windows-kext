@@ -80,6 +80,7 @@ int clean_verdict_cache(verdict_cache_t* verdict_cache, pportmaster_packet_info*
 
         // free
         _FREE(last_item);
+        verdict_cache->size--;
 
         return 0;
     }

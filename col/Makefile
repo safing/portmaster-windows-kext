@@ -1,7 +1,7 @@
 CC = gcc
 # CFLAGS += -Wall -pedantic -D_DEFAULT_SOURCE -g
 CFLAGS += -std=c99 -Wall -pedantic -D_DEFAULT_SOURCE -g
-INCLUDES = -I../include
+INCLUDES = -I../include -include ../include/pm_linux_fix.h
 
 TMP = ./tmp
 
