@@ -88,8 +88,11 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT driver_obj, IN PUNICODE_STRING registry_p
     FWPM_SESSION wdf_session = { 0 };
     BOOLEAN in_transaction = FALSE;
     BOOLEAN callout_registered = FALSE;
+    
+    initDebugStructure();
 
     INFO("Trying to load Kernel Object '%ls', Compiledate: %s %s", PORTMASTER_DEVICE_NAME, __DATE__, __TIME__);
+    INFO("PM_PACKET_CACHE_SIZE = %d, PM_VERDICT_CACHE_SIZE= %d", PM_PACKET_CACHE_SIZE, PM_VERDICT_CACHE_SIZE);
     status= initCalloutStructure();
     if (!NT_SUCCESS(status)) {
         status = STATUS_FAILED_DRIVER_ENTRY;

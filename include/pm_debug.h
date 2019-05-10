@@ -15,7 +15,9 @@
 #ifndef PM_DEBUG_H
 #define PM_DEBUG_H
 
-#define DEBUG_ON		//undefine if Debug Functions should not be compiled
+/****************************************************************************/
+#define DEBUG_ON		// Undefine if Debug Functions should not be compiled
+/****************************************************************************/
 
 #define DEBUG_BUFSIZE       256		
 #define LEVEL_DEBUG 0
@@ -51,6 +53,7 @@ extern int logLevel;  //must be defined in dll and kernel object
     extern void print_ip_header(char* buf, unsigned long buf_len, char* data, unsigned long data_len);
     extern char* print_ipv4_packet(void* packet);
     extern char* print_packet_info(pportmaster_packet_info packetInfo);
+    extern void initDebugStructure();
     
 #else
     #define DEBUG(...)  {}
@@ -61,6 +64,7 @@ extern int logLevel;  //must be defined in dll and kernel object
     #define print_ip_header   {}
     #define print_ipv4_packet {}
     #define print_packet_info {}
+    #define initDebugStructure() {}
 #endif
 
 #define FORMAT_ADDR(x) (x>>24)&0xFF, (x>>16)&0xFF, (x>>8)&0xFF, x&0xFF

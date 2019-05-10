@@ -14,10 +14,12 @@
 #ifndef __COL_PACKETS_H__
 #define __COL_PACKETS_H__
 
+#ifndef __LINUX_ENV__
 #include <intsafe.h>
 #define uint16_t UINT16
 #define uint32_t UINT32
 #define uint64_t UINT64
+#endif
 
 typedef struct packet_cache_item packet_cache_item_t;
 struct packet_cache_item {

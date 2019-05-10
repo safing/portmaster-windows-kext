@@ -17,16 +17,24 @@ int logLevel= LEVEL_INFO;
 #ifdef DEBUG_ON
 #define _BUILD "DEBUG"
 
+static KSPIN_LOCK debugLock;
+
 void __DEBUG(char* name, int level, int line, char* format, ...) {
     if (level >= logLevel) {
-        va_list args;
-        static char buf[DEBUG_BUFSIZE+1];
-        static char *level_names[]= {"DEBUG", "INFO", "WARN", "ERROR", "FATAL"};
-        va_start(args, format);
-        RtlStringCbVPrintfA(buf, DEBUG_BUFSIZE, format, args);
+        KLOCK_QUEUE_HANDLE lock_handle;
+        //Locking is required because we want to use static variables here for better performance
+        KeAcquireInStackQueuedSpinLock(&debugLock, &lock_handle);
+        {
+            va_list args;
+            static char buf[DEBUG_BUFSIZE+1];
+            static char *level_names[]= {"DEBUG", "INFO", "WARN", "ERROR", "FATAL"};
+            va_start(args, format);
+            RtlStringCbVPrintfA(buf, DEBUG_BUFSIZE, format, args);
 
-        DbgPrint("%s %s L%04d: %s\n", name, level_names[level], line, buf);
-        va_end(args);
+            DbgPrint("%s %s L%04d: %s\n", name, level_names[level], line, buf);
+            va_end(args);
+        }
+        KeReleaseInStackQueuedSpinLock(&lock_handle);
     }
 }
 
@@ -100,7 +108,10 @@ char* print_packet_info(pportmaster_packet_info packetInfo) {
     return buf;
 }
 
-
+void initDebugStructure()
+{
+    KeInitializeSpinLock(&debugLock);
+}
 
 
 #else       // DEBUG_ON

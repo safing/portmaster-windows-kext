@@ -125,6 +125,13 @@ typedef INT8 verdict_t;
                         "PORTMASTER_VERDICT_REDIR_TUNNEL"}
 
 /*
+ * CACHE SIZES for packet and verdict cache
+ * default is 256 for packet and 256 for verdict cache
+ */
+#define PM_PACKET_CACHE_SIZE 256
+#define PM_VERDICT_CACHE_SIZE 256
+
+/*
  * Container for Verdicts
  */
 typedef struct {

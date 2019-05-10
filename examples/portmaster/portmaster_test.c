@@ -106,6 +106,8 @@ int __cdecl main(int argc, char **argv) {
     //Simple demonstration of Portmaster like behavior
     while (TRUE) {
         i++;
+        //if (i > 3) break;
+        
         rc= PortmasterRecvVerdictRequest(&packet_info);
         if(rc !=0) {
             INFO("Nothing received");
@@ -147,6 +149,7 @@ int __cdecl main(int argc, char **argv) {
                 break;
         }
     } //while (TRUE)
+ 
     INFO("Shutdown");
     rc= PortmasterStop();
 }

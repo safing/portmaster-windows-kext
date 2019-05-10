@@ -81,6 +81,15 @@ extern _EXPORT int PortmasterStop() {
     INFO("Stopping Service now");
     rc= CloseHandle(handle);
     INFO("CloseHandle to Portmaster Kernel Extension returned= %d (nonzero is success)", rc);
+    if (rc == 0)
+    {
+        rc= GetLastError();
+        WARN("GetLastError= 0x%x", rc);
+    }
+    else 
+    {
+        rc= 0;
+    }      
     system("sc stop " PORTMASTER_DEVICE_NAME_C);  //This is a question of taste, but it is a robust and solid solution
     return rc;
 }

@@ -52,19 +52,19 @@ NTSTATUS initCalloutStructure() {
     int rc;
     NTSTATUS status;
 
-    rc = create_verdict_cache(256, &verdictCacheV4);
+    rc = create_verdict_cache(PM_VERDICT_CACHE_SIZE, &verdictCacheV4);
     if (rc != 0) {
         return STATUS_INTERNAL_ERROR;
     }
     KeInitializeSpinLock(&verdictCacheV4Lock);
 
-    rc = create_verdict_cache(256, &verdictCacheV6);
+    rc = create_verdict_cache(PM_VERDICT_CACHE_SIZE, &verdictCacheV6);
     if (rc != 0) {
         return STATUS_INTERNAL_ERROR;
     }
     KeInitializeSpinLock(&verdictCacheV6Lock);
 
-    rc = create_packet_cache(256, &packetCache);
+    rc = create_packet_cache(PM_PACKET_CACHE_SIZE, &packetCache);
     if (rc != 0) {
         return STATUS_INTERNAL_ERROR;
     }
@@ -132,7 +132,7 @@ NTSTATUS copyIPv6(const FWPS_INCOMING_VALUES* inFixedValues, FWPS_FIELDS_OUTBOUN
     UINT32* ipV6;
 
     // sanity check
-    if (!inFixedValues || !ip || idx == 0) {
+    if (!inFixedValues || !ip) {
         ERR("Invalid parameters");
         return STATUS_INVALID_PARAMETER;
     }
@@ -421,6 +421,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
         verdict = verdict * -1;
     }
 
+    INFO("Trying to retrieve packet");
     KeAcquireInStackQueuedSpinLock(&packetCacheLock, &lock_handle);
     rc = retrieve_packet(packetCache, id, &packetInfo, &packet, &packet_len);
     KeReleaseInStackQueuedSpinLock(&lock_handle);
@@ -573,7 +574,7 @@ void classifyAll(portmaster_packet_info* packetInfo,
     verdict_t verdict;
     int rc;
     PDATA_ENTRY dentry;
-    KLOCK_QUEUE_HANDLE lock_handle;
+    KLOCK_QUEUE_HANDLE lock_handle_vc, lock_handle_pc;
     pportmaster_packet_info copiedPacketInfo, redirInfo;
     PPM_IPHDR ip_header;
     PNET_BUFFER_LIST nbl;
@@ -717,7 +718,7 @@ void classifyAll(portmaster_packet_info* packetInfo,
     }
 
     // check verdict cache
-    KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lock_handle);
+    KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lock_handle_vc);
     // First check if the packet is a DNAT response
     if (packetInfo->remotePort == PORT_G17EP || packetInfo->remotePort == PORT_DNS) {
         verdict = check_reverse_redir(verdictCache, packetInfo, &redirInfo);
@@ -730,7 +731,7 @@ void classifyAll(portmaster_packet_info* packetInfo,
             redirInfo = packetInfo;
         }
     }
-    KeReleaseInStackQueuedSpinLock(&lock_handle);
+    KeReleaseInStackQueuedSpinLock(&lock_handle_vc);
 
     if (verdict != PORTMASTER_VERDICT_GET) { // we already have a verdict!
 
@@ -834,7 +835,13 @@ void classifyAll(portmaster_packet_info* packetInfo,
 
         //Register Packet
         //INFO("packetInfo->compartmentId= %d, ->interfaceIndex= %d, ->subInterfaceIndex= %d", packetInfo->compartmentId, packetInfo->interfaceIndex, packetInfo->subInterfaceIndex);
+        DEBUG("trying to register packet");
+        KeAcquireInStackQueuedSpinLock(&packetCacheLock, &lock_handle_pc);      
+        //Lock packet cache because "register_packet" and "clean_packet_cache" must never run simultaniously
+        //Explicit lock is required, because two or more callouts can run simultaniously 
+        //btw: Never use static variables in callouts ...
         copied_packet_info->id = register_packet(packetCache, copied_packet_info, data, data_len);
+        KeReleaseInStackQueuedSpinLock(&lock_handle_pc);
         INFO("registered packet with ID %u", copied_packet_info->id);
 
         // send to queue
@@ -844,7 +851,9 @@ void classifyAll(portmaster_packet_info* packetInfo,
         {
             pportmaster_packet_info packet_info_to_free;
             void* data_to_free;
+            KeAcquireInStackQueuedSpinLock(&packetCacheLock, &lock_handle_pc);
             rc = clean_packet_cache(packetCache, &packet_info_to_free, &data_to_free);
+            KeReleaseInStackQueuedSpinLock(&lock_handle_pc);
             if (rc == 0) {
                 portmaster_free(packet_info_to_free);
                 portmaster_free(data_to_free);
@@ -933,25 +942,38 @@ void classifyInboundIPv6(
     FWPS_CLASSIFY_OUT* classifyOut) {
     NTSTATUS status;
 
-    // FIXME: remove!
-    classifyOut->actionType = FWP_ACTION_BLOCK;
-    return;
+    // sanity check
+    if (!inFixedValues || !inMetaValues || !layerData || !classifyOut) {
+        ERR("Invalid parameters");
+        classifyOut->actionType = FWP_ACTION_BLOCK;
+        return;
+    }
 
     inboundV6PacketInfo.direction = 1;
     inboundV6PacketInfo.ipV6 = 1;
 
     status= copyIPv6(inFixedValues, FWPS_FIELD_INBOUND_IPPACKET_V6_IP_LOCAL_ADDRESS, inboundV6PacketInfo.localIP);
     if (status != STATUS_SUCCESS) {
+        ERR("Could not copy IPv6, status= 0x%x", status);
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
     }
 
     status= copyIPv6(inFixedValues, FWPS_FIELD_INBOUND_IPPACKET_V6_IP_REMOTE_ADDRESS, inboundV6PacketInfo.remoteIP);
     if (status != STATUS_SUCCESS) {
+        ERR("Could not copy IPv6, status= 0x%x", status);
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
     }
 
+    inboundV6PacketInfo.interfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_INBOUND_IPPACKET_V6_INTERFACE_INDEX].value.uint32;
+    inboundV6PacketInfo.subInterfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_INBOUND_IPPACKET_V6_SUB_INTERFACE_INDEX].value.uint32;
+
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_COMPARTMENT_ID)) {
+        inboundV6PacketInfo.compartmentId = inMetaValues->compartmentId;
+    } else {
+        inboundV6PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
+    }
     classifyAll(&inboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
     return;
 }
@@ -966,25 +988,38 @@ void classifyOutboundIPv6(
     FWPS_CLASSIFY_OUT* classifyOut) {
     NTSTATUS status;
 
-    // FIXME: remove!
-    classifyOut->actionType = FWP_ACTION_BLOCK;
-    return;
+    // sanity check
+    if (!inFixedValues || !inMetaValues || !layerData || !classifyOut) {
+        ERR("Invalid parameters");
+        classifyOut->actionType = FWP_ACTION_BLOCK;
+        return;
+    }
 
     outboundV6PacketInfo.direction = 0;
     outboundV6PacketInfo.ipV6 = 1;
 
     status= copyIPv6(inFixedValues, FWPS_FIELD_OUTBOUND_IPPACKET_V6_IP_LOCAL_ADDRESS, outboundV6PacketInfo.localIP);
     if (status != STATUS_SUCCESS) {
+        ERR("Could not copy IPv6, status= 0x%x", status);
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
     }
 
     status= copyIPv6(inFixedValues, FWPS_FIELD_OUTBOUND_IPPACKET_V6_IP_REMOTE_ADDRESS, outboundV6PacketInfo.remoteIP);
     if (status != STATUS_SUCCESS) {
+        ERR("Could not copy IPv6, status= 0x%x", status);
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
     }
-
+    
+    outboundV6PacketInfo.interfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_OUTBOUND_IPPACKET_V6_INTERFACE_INDEX].value.uint32;
+    outboundV6PacketInfo.subInterfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_OUTBOUND_IPPACKET_V6_SUB_INTERFACE_INDEX].value.uint32;
+    
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_COMPARTMENT_ID)) {
+        outboundV6PacketInfo.compartmentId = inMetaValues->compartmentId;
+    } else {
+        outboundV6PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
+    }
     classifyAll(&outboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
     return;
 }
