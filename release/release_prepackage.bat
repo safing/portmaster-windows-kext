@@ -5,6 +5,12 @@ set INSTALL_MINGW_AMD64=..\install\MINGW\amd64
 
 echo.
 echo =====
+echo removing old files ...
+rmdir /Q /S %CABDIR%
+del PortmasterKext.cab
+
+echo.
+echo =====
 echo copying files ...
 mkdir %CABDIR%\amd64
 copy %INSTALL_WDDK_AMD64%\pm_kernel64.sys %CABDIR%\amd64\PortmasterKext64.sys
@@ -18,6 +24,11 @@ echo removing existing signatures ...
 signtool remove /s %CABDIR%\amd64\PortmasterKext64.sys
 :: signtool remove /s %CABDIR%\amd64\PortmasterKext64.pdb
 :: signtool remove /s %CABDIR%\amd64\PortmasterKext64.dll
+
+echo.
+echo =====
+echo setting metadata ...
+call release_set_metadata.bat
 
 echo.
 echo =====

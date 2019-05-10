@@ -18,6 +18,7 @@ Get one here: https://docs.microsoft.com/en-us/windows-hardware/drivers/dashboar
   - copy all the needed files
   - remove existing signatures (we want the Microsoft signature to be the primary one for max. compatibility)
   - package everything for signing by Microsoft
+  - calls `release_set_metadata.bat`, which you can create to set extra file version and metadata.
 
 - Verify that the `PortmasterKext` dir looks like this:
 
