@@ -5,6 +5,12 @@ set INSTALL_MINGW_AMD64=..\install\MINGW\amd64
 
 echo.
 echo =====
+echo checking if build is set to release ...
+findstr /R /C:"^#define DEBUG_ON" ..\include\pm_debug.h
+if %ERRORLEVEL% equ 0 echo BUILD IS SET TO DEBUG! && exit /b
+
+echo.
+echo =====
 echo removing old files ...
 rmdir /Q /S %CABDIR%
 del PortmasterKext.cab
