@@ -4,7 +4,7 @@
  *  Owner:		 Safing ICS Technologies GmbH
  *
  *  Description: Common Debug definitions for kernel and userland driver
- *               Defines the DEBUG_ON Symbol.  
+ *               Defines the DEBUG_ON Symbol.
  *               If defined -> Debug Build
  *               If undefined -> Release Build
  *
@@ -16,10 +16,10 @@
 #define PM_DEBUG_H
 
 /****************************************************************************/
-#define DEBUG_ON		// Undefine if Debug Functions should not be compiled
+// #define DEBUG_ON		// Undefine if Debug Functions should not be compiled
 /****************************************************************************/
 
-#define DEBUG_BUFSIZE       256		
+#define DEBUG_BUFSIZE       256
 #define LEVEL_DEBUG 0
 #define LEVEL_INFO  1
 #define LEVEL_WARN  2
@@ -38,7 +38,7 @@ extern int logLevel;  //must be defined in dll and kernel object
  DEBUG("Where do we come from, %s %s", p1, p2);
  --> DEBUG(__LINE__, "Where do we come from, %s %s", p1, p2);
  Writing to file from kernel mode driver is not recommended and may
- not be supported at all: 
+ not be supported at all:
  https://stackoverflow.com/questions/49091442/log-to-a-txt-file-from-a-windows-10-kernel-mode-driver#49243511
  All we can do is write to a dedicated debug channel and adjust the loglevel at runtime.
 */
@@ -54,13 +54,13 @@ extern int logLevel;  //must be defined in dll and kernel object
     extern char* print_ipv4_packet(void* packet);
     extern char* print_packet_info(pportmaster_packet_info packetInfo);
     extern void initDebugStructure();
-    
+
 #else
     #define DEBUG(...)  {}
     #define INFO(...)   {}
     #define WARN(...)   {}
-    #define ERR(...)    {} 
-    
+    #define ERR(...)    {}
+
     #define print_ip_header   {}
     #define print_ipv4_packet {}
     #define print_packet_info {}
@@ -70,5 +70,3 @@ extern int logLevel;  //must be defined in dll and kernel object
 #define FORMAT_ADDR(x) (x>>24)&0xFF, (x>>16)&0xFF, (x>>8)&0xFF, x&0xFF
 
 #endif //Include Guard
-
-
