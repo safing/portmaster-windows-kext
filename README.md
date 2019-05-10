@@ -53,7 +53,7 @@ Prerequesites:
 
 Build driver:
 
-    :: open a _x86 Free Build Environment_ console
+    :: open a _x64 Free Build Environment_ console
     wddk-build.bat
     :: built driver lands in install\WDDK\amd64
 
