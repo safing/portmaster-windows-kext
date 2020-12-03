@@ -556,7 +556,6 @@ BOOL packet_in_loop(HANDLE handle, PNET_BUFFER_LIST nbl, FWPS_CLASSIFY_OUT* clas
             injection_state == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
             //SetEvent(wfp->Event);
             INFO("packet was in loop, injection_state= %d ", injection_state);
-            classifyOut->actionType = FWP_ACTION_PERMIT; // continue
             return TRUE;
         }
     }
@@ -598,10 +597,26 @@ void classifyAll(portmaster_packet_info* packetInfo,
         return;
     }
 
-    //If we don't get the right to write, letz block
+    // If we don't get the right to write, block the packet.
     if (!(classifyOut->rights & FWPS_RIGHT_ACTION_WRITE)) {
         classifyOut->actionType = FWP_ACTION_BLOCK;
         ERR("No right to write -> block: %s", print_packet_info(packetInfo));
+        return;
+    }
+
+    // Get injection handle.
+    if (packetInfo->ipV6) {
+        handle = injectv6_handle;
+    } else {
+        handle = inject_handle;
+    }
+
+    // Interpret layer data as netbuffer list and check if it's a looping packet.
+    // Packets created/injected by us will loop back to us.
+    nbl = (PNET_BUFFER_LIST) layerData;
+    if (packet_in_loop(handle, nbl, classifyOut)) {
+        classifyOut->actionType = FWP_ACTION_PERMIT;
+        INFO("packet was in loop");
         return;
     }
 
@@ -619,7 +634,7 @@ void classifyAll(portmaster_packet_info* packetInfo,
         return;
     }
 
-    nbl= (PNET_BUFFER_LIST) layerData;
+    // Get first netbuffer from list.
     nb = NET_BUFFER_LIST_FIRST_NB(nbl);
 
     //Inbound traffic requires special treatment - dafuq?
@@ -682,10 +697,8 @@ void classifyAll(portmaster_packet_info* packetInfo,
     // get protocol
     if (packetInfo->ipV6) {
         packetInfo->protocol = ((UINT8*) data)[6];
-        handle = injectv6_handle;
     } else {
         packetInfo->protocol = ((UINT8*) data)[9];
-        handle = inject_handle;
     }
 
     // get ports
@@ -738,11 +751,6 @@ void classifyAll(portmaster_packet_info* packetInfo,
     KeReleaseInStackQueuedSpinLock(&lock_handle_vc);
 
     if (verdict != PORTMASTER_VERDICT_GET) { // we already have a verdict!
-
-        if (packet_in_loop(handle, nbl, classifyOut)) {
-            // INFO("? packet was in loop");
-            return;
-        }
 
         switch (verdict) {
             case PORTMASTER_VERDICT_DROP:
