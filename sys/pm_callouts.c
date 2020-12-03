@@ -354,16 +354,20 @@ void redir(pportmaster_packet_info packetInfo, pportmaster_packet_info redirInfo
         handle= injectv6_handle;
     }
 
+    // Reset routing compartment ID, as we are changing where this is going to.
+    // This necessity is unconfirmed.
+    packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
+
     if (packetInfo->direction == 0) {
         INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                UNSPECIFIED_COMPARTMENT_ID /*packetInfo->compartmentId*/, nbl, free_after_inject,
+                packetInfo->compartmentId, nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
     } else {
         INFO("Rcv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
-                UNSPECIFIED_COMPARTMENT_ID /*packetInfo->compartmentId*/, packetInfo->interfaceIndex,
+                packetInfo->compartmentId, packetInfo->interfaceIndex,
                 packetInfo->subInterfaceIndex, nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
@@ -506,14 +510,14 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     if (packetInfo->direction == 0) {
         INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                UNSPECIFIED_COMPARTMENT_ID, nbl, free_after_inject,
+                packetInfo->compartmentId, nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
     } else {
         INFO("Rcv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(packet));
         INFO("INJECTING packet id %u", packetInfo->id);
         status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
-                UNSPECIFIED_COMPARTMENT_ID, packetInfo->interfaceIndex,
+                packetInfo->compartmentId, packetInfo->interfaceIndex,
                 packetInfo->subInterfaceIndex, nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
