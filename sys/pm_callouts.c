@@ -333,7 +333,7 @@ void redir(pportmaster_packet_info packetInfo, pportmaster_packet_info redirInfo
     }
     INFO("Headers modified");
 
-    // fix checksums
+    // Fix checksums, including TCP/UDP.
     if (!packetInfo->ipV6) {
         calc_ipv4_checksum(packet, packet_len, TRUE);
     } else {
@@ -485,9 +485,13 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
             return;
     }
 
-    // fix checksums (IPv6 does not have an IP checksum that we would have to fix)
+    // Fix checksums, including TCP/UDP.
+    // Apparently, we have to do this whenever we inject packet, no matter if
+    // we modify it or not.
     if (!packetInfo->ipV6) {
-        calc_ipv4_checksum(packet, packet_len, FALSE);
+        calc_ipv4_checksum(packet, packet_len, TRUE);
+    } else {
+        calc_ipv6_checksum(packet, packet_len, TRUE);
     }
 
     // re-inject ...
