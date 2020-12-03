@@ -620,6 +620,15 @@ void classifyAll(portmaster_packet_info* packetInfo,
         return;
     }
 
+    // Permit fragmented packets.
+    // But of course not the first one, we are checking that one!
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_FRAGMENT_DATA) &&
+        inMetaValues->fragmentMetadata.fragmentOffset != 0) {
+        classifyOut->actionType = FWP_ACTION_PERMIT;
+        INFO("Permitting fragmented packet: %s", print_packet_info(packetInfo));
+        return;
+    }
+
     // get header size
     if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_IP_HEADER_SIZE)) {
         ipHeaderSize = inMetaValues->ipHeaderSize;
