@@ -63,7 +63,7 @@ VOID calc_ipv4_checksum(void* data, int len, BOOL calc_transport) {
 
         INFO("calculated checksum: 0x%04X (NetworkByteorder), 0x%02X%02X", ip_header->Checksum, ip_header->Checksum&0x00FF, (ip_header->Checksum&0xFF00)>>8);
 
-        if (calc_transport) {
+        if (calc_transport && (ip_header->Protocol == 6 || ip_header->Protocol == 17)) {
             // reset sum
             sum = 0;
 
@@ -108,7 +108,7 @@ VOID calc_ipv6_checksum(void* data, int len, BOOL calc_transport) {
         return;
     }
 
-    if (ip_header_len > 0 && calc_transport) {
+    if (ip_header_len > 0 && calc_transport && (protocol == 6 || protocol == 17)) {
         PIPV6_HEADER ip_header = (PIPV6_HEADER) data;
         UINT32 sum = 0;
         UINT32 payload_len = len - ip_header_len;

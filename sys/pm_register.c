@@ -99,7 +99,7 @@ NTSTATUS register_filter(
 
     filter->displayData.name = filter_name;
     filter->displayData.description = filter_description;
-    filter->action.type = FWP_ACTION_CALLOUT_TERMINATING;   // Says this filter's callout MUST make a block/permit decision
+    filter->action.type = FWP_ACTION_CALLOUT_TERMINATING;   // Says this filter's callout MUST make a block/permit decision. Also see doc excerpts below.
     filter->subLayerKey = PORTMASTER_SUBLAYER_GUID;
     filter->weight.type = FWP_UINT8;
     filter->weight.uint8 = 0xf;     // The weight of this filter within its sublayer
@@ -112,6 +112,13 @@ NTSTATUS register_filter(
     } else {
         // INFO("Portmaster filter registered");
     }
+
+    // From https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/fwpsk/nf-fwpsk-fwpscalloutregister0
+    // A callout and filters that specify the callout for the filter's action can be added to the filter engine before a callout driver registers the callout with the filter engine. In this situation, filters with an action type of FWP_ACTION_CALLOUT_TERMINATING or FWP_ACTION_CALLOUT_UNKNOWN are treated as FWP_ACTION_BLOCK, and filters with an action type of FWP_ACTION_CALLOUT_INSPECTION are ignored until the callout is registered with the filter engine.
+
+    // FWP_ACTION_CALLOUT_TERMINATING directly permits or blocks traffic without asking anyone else.
+    // It cannot FWP_ACTION_CONTINUE to the next filter.
+    // Source: https://docs.microsoft.com/en-us/windows/win32/api/fwpstypes/ns-fwpstypes-fwps_action0
 
     return status;
 }
