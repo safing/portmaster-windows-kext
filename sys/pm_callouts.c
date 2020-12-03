@@ -861,9 +861,9 @@ void classifyAll(portmaster_packet_info* packetInfo,
         //Register Packet
         //INFO("packetInfo->compartmentId= %d, ->interfaceIndex= %d, ->subInterfaceIndex= %d", packetInfo->compartmentId, packetInfo->interfaceIndex, packetInfo->subInterfaceIndex);
         DEBUG("trying to register packet");
-        KeAcquireInStackQueuedSpinLock(&packetCacheLock, &lock_handle_pc);      
+        KeAcquireInStackQueuedSpinLock(&packetCacheLock, &lock_handle_pc);
         //Lock packet cache because "register_packet" and "clean_packet_cache" must never run simultaniously
-        //Explicit lock is required, because two or more callouts can run simultaniously 
+        //Explicit lock is required, because two or more callouts can run simultaniously
         //btw: Never use static variables in callouts ...
         copied_packet_info->id = register_packet(packetCache, copied_packet_info, data, data_len);
         KeReleaseInStackQueuedSpinLock(&lock_handle_pc);
@@ -1036,10 +1036,10 @@ void classifyOutboundIPv6(
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
     }
-    
+
     outboundV6PacketInfo.interfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_OUTBOUND_IPPACKET_V6_INTERFACE_INDEX].value.uint32;
     outboundV6PacketInfo.subInterfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_OUTBOUND_IPPACKET_V6_SUB_INTERFACE_INDEX].value.uint32;
-    
+
     if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_COMPARTMENT_ID)) {
         outboundV6PacketInfo.compartmentId = inMetaValues->compartmentId;
     } else {
