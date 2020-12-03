@@ -12,6 +12,14 @@ Get one here: https://docs.microsoft.com/en-us/windows-hardware/drivers/dashboar
   - `makecab`
   - `signtool` from Win SDK 8.1 or newer (for the `remove` command)
 
+### Replace all versions
+
+There are version identifiers in these files:
+- inf/PortmasterKext32.inf
+- inf/PortmasterKext64.inf
+- release/release_set_metadata.bat (2 occurences)
+- sys/pm_kernel.rc (2 occurences)
+
 ### Pre-Packaging
 
 - Run `release_prepackage.bat` to:
