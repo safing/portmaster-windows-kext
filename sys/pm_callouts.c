@@ -153,7 +153,7 @@ NTSTATUS copyIPv6(const FWPS_INCOMING_VALUES* inFixedValues, FWPS_FIELDS_OUTBOUN
     return STATUS_SUCCESS;
 }
 
-void redir_from_callout(FWPS_CLASSIFY_OUT* classifyOut, pportmaster_packet_info packetInfo, pportmaster_packet_info redirInfo, PNET_BUFFER nb, size_t ipHeaderSize, BOOL dns) {
+void redir_from_callout(pportmaster_packet_info packetInfo, pportmaster_packet_info redirInfo, PNET_BUFFER nb, size_t ipHeaderSize, BOOL dns) {
     void* packet;
     ULONG packet_len;
     NTSTATUS status;
@@ -162,20 +162,13 @@ void redir_from_callout(FWPS_CLASSIFY_OUT* classifyOut, pportmaster_packet_info 
     if (!redirInfo) {
         ERR("redirInfo is NULL!");
     }
-    if (!classifyOut || !packetInfo || !redirInfo || !nb || ipHeaderSize == 0) {
+    if (!packetInfo || !redirInfo || !nb || ipHeaderSize == 0) {
         ERR("Invalid parameters");
-        classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
     }
 
     // DEBUG: print its TCP 4-tuple
     INFO("Handling redir for %s", print_packet_info(packetInfo));
-
-    //Block, Absorb, and Copy Packet to packet_cashe
-    //according to https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
-    classifyOut->actionType = FWP_ACTION_BLOCK;
-    classifyOut->flags|= FWPS_CLASSIFY_OUT_FLAG_ABSORB;   //Set Absorb Bit 1
-    classifyOut->rights&= ~FWPS_RIGHT_ACTION_WRITE;     //Set Write Bit 0
 
     //Inbound traffic requires special treatment - dafuq?
     if (packetInfo->direction == 1) {   //Inbound
@@ -194,7 +187,7 @@ void redir_from_callout(FWPS_CLASSIFY_OUT* classifyOut, pportmaster_packet_info 
     }
     //Now data should contain a full blown packet
 
-    //In order to be as clean as possible, we shift back nb, even though it may not be necessary
+    // In order to be as clean as possible, we shift back nb, even though it may not be necessary.
     if (packetInfo->direction == 1) {   //Inbound
         NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
     }
@@ -542,41 +535,17 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     return;
 }
 
-//Checks if packet is in Loop
-//Return values:
-//  true: packet was handled before -> let it flow (FWP_ACTION_PERMIT)
-//  false: handle packet now
-BOOL packet_in_loop(HANDLE handle, PNET_BUFFER_LIST nbl, FWPS_CLASSIFY_OUT* classifyOut) {
-
-    // sanity check
-    if (!classifyOut || !nbl) {
-        ERR("Invalid parameters");
-        return FALSE;
-    }
-
-    if (handle != NULL) {
-        FWPS_PACKET_INJECTION_STATE injection_state = FwpsQueryPacketInjectionState(handle, nbl, NULL);
-        if (injection_state == FWPS_PACKET_INJECTED_BY_SELF ||
-            injection_state == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
-            //SetEvent(wfp->Event);
-            INFO("packet was in loop, injection_state= %d ", injection_state);
-            return TRUE;
-        }
-    }
-
-    return FALSE;
-}
-
-
 /******************************************************************
  * Classify Functions
  ******************************************************************/
-void classifyAll(portmaster_packet_info* packetInfo,
+FWP_ACTION_TYPE classifySingle(
+    portmaster_packet_info* packetInfo,
     verdict_cache_t* verdictCache,
     KSPIN_LOCK* verdictCacheLock,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
-    void* layerData,
-    FWPS_CLASSIFY_OUT* classifyOut) {
+    PNET_BUFFER nb,
+    UINT32 ipHeaderSize
+    ) {
     int offset;
     verdict_t verdict;
     int rc;
@@ -584,9 +553,6 @@ void classifyAll(portmaster_packet_info* packetInfo,
     KLOCK_QUEUE_HANDLE lock_handle_vc, lock_handle_pc;
     pportmaster_packet_info copiedPacketInfo, redirInfo;
     PPM_IPHDR ip_header;
-    PNET_BUFFER_LIST nbl;
-    PNET_BUFFER nb;
-    UINT32 ipHeaderSize;
     UINT16 srcPort, dstPort;
     ULONG maxBytes, data_len;
     NTSTATUS status;
@@ -594,69 +560,12 @@ void classifyAll(portmaster_packet_info* packetInfo,
     BOOL copiedNBForPacketInfo= FALSE;
     HANDLE handle;
 
-    // sanity check
-    if (!packetInfo || !verdictCache || !verdictCacheLock || !inMetaValues || !layerData || !classifyOut) {
-        ERR("Invalid parameters");
-        classifyOut->actionType = FWP_ACTION_BLOCK;
-        return;
-    }
-
-    // If we don't get the right to write, block the packet.
-    if (!(classifyOut->rights & FWPS_RIGHT_ACTION_WRITE)) {
-        classifyOut->actionType = FWP_ACTION_BLOCK;
-        ERR("No right to write -> block: %s", print_packet_info(packetInfo));
-        return;
-    }
-
-    // Get injection handle.
-    if (packetInfo->ipV6) {
-        handle = injectv6_handle;
-    } else {
-        handle = inject_handle;
-    }
-
-    // Interpret layer data as netbuffer list and check if it's a looping packet.
-    // Packets created/injected by us will loop back to us.
-    nbl = (PNET_BUFFER_LIST) layerData;
-    if (packet_in_loop(handle, nbl, classifyOut)) {
-        classifyOut->actionType = FWP_ACTION_PERMIT;
-        INFO("packet was in loop");
-        return;
-    }
-
-    // Permit fragmented packets.
-    // But of course not the first one, we are checking that one!
-    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_FRAGMENT_DATA) &&
-        inMetaValues->fragmentMetadata.fragmentOffset != 0) {
-        classifyOut->actionType = FWP_ACTION_PERMIT;
-        INFO("Permitting fragmented packet: %s", print_packet_info(packetInfo));
-        return;
-    }
-
-    // get header size
-    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_IP_HEADER_SIZE)) {
-        ipHeaderSize = inMetaValues->ipHeaderSize;
-    } else {
-        ERR("AAAAAA!!!!");
-        classifyOut->actionType = FWP_ACTION_BLOCK;
-        return;
-    }
-    if (ipHeaderSize == 0) {
-        ERR("inMetaValues reports an ipHeaderSize of 0");
-        classifyOut->actionType = FWP_ACTION_BLOCK;
-        return;
-    }
-
-    // Get first netbuffer from list.
-    nb = NET_BUFFER_LIST_FIRST_NB(nbl);
-
     //Inbound traffic requires special treatment - dafuq?
     if (packetInfo->direction == 1) { //Inbound
         status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
         if (!NT_SUCCESS(status)) {
             ERR("AAAAAA!!!!");
-            classifyOut->actionType = FWP_ACTION_BLOCK;
-            return;
+            return FWP_ACTION_BLOCK;
         }
     }
 
@@ -686,22 +595,14 @@ void classifyAll(portmaster_packet_info* packetInfo,
         status = copy_packet_data_from_nb(nb, req_bytes, &data, &data_len);
         if (!NT_SUCCESS(status)) {
             ERR("copy_packet_data_from_nb could not copy IP Header+4 bytes, status=x%X, BLOCK", status);
-            classifyOut->actionType = FWP_ACTION_BLOCK;
-            return;
+            return FWP_ACTION_BLOCK;
         }
 
         // check if we got enough data
         if (data_len < req_bytes) {
-            if (data_len >= 10) {
-                if (packetInfo->ipV6) {
-                    packetInfo->protocol = ((UINT8*)data)[6];
-                } else {
-                    packetInfo->protocol = ((UINT8*)data)[9];
-                }
-            }
             ERR("Requested %u bytes, but received %u bytes (ipV6=%i, protocol=%u, status=0x%X)", req_bytes, data_len, packetInfo->ipV6, packetInfo->protocol, status);
-            classifyOut->actionType = FWP_ACTION_BLOCK;
-            return;
+            portmaster_free(data);
+            return FWP_ACTION_BLOCK;
         }
 
         copiedNBForPacketInfo = TRUE;
@@ -763,40 +664,46 @@ void classifyAll(portmaster_packet_info* packetInfo,
     }
     KeReleaseInStackQueuedSpinLock(&lock_handle_vc);
 
-    if (verdict != PORTMASTER_VERDICT_GET) { // we already have a verdict!
+    switch (verdict) {
+        case PORTMASTER_VERDICT_DROP:
+            INFO("PORTMASTER_VERDICT_DROP: %s", print_packet_info(packetInfo));
+            return FWP_ACTION_BLOCK;
 
-        switch (verdict) {
-            case PORTMASTER_VERDICT_DROP:
-                classifyOut->actionType = FWP_ACTION_BLOCK;
-                INFO("PORTMASTER_VERDICT_DROP: %s", print_packet_info(packetInfo));
-                return;
-            case PORTMASTER_VERDICT_BLOCK:
-                classifyOut->actionType = FWP_ACTION_BLOCK;
-                INFO("PORTMASTER_VERDICT_BLOCK: %s", print_packet_info(packetInfo));
-                return;
-            case PORTMASTER_VERDICT_ACCEPT:
-                classifyOut->actionType = FWP_ACTION_PERMIT; // we need to call FWP_ACTION_PERMIT because we use option TERMINATE, alternative would be FWP_ACTION_NONE
-                DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", print_packet_info(packetInfo));
-                return;
-            case PORTMASTER_VERDICT_REDIR_DNS:
-                INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", print_packet_info(packetInfo));
-                redir_from_callout(classifyOut, packetInfo, redirInfo, nb, ipHeaderSize, TRUE);
-                return;
-            case PORTMASTER_VERDICT_REDIR_TUNNEL:
-                INFO("PORTMASTER_VERDICT_REDIR_TUNNEL: %s", print_packet_info(packetInfo));
-                redir_from_callout(classifyOut, packetInfo, redirInfo, nb, ipHeaderSize, FALSE);
-                return;
-            case PORTMASTER_VERDICT_GET:
-                classifyOut->actionType = FWP_ACTION_BLOCK; // we need to call FWP_ACTION_PERMIT because we use option TERMINATE, alternative would be FWP_ACTION_NONE
-                ERR("PORTMASTER_VERDICT_GET: %s", print_packet_info(packetInfo));
-                return;
-            default:
-                WARN("unknown verdict: 0x%x {%s}", print_packet_info(packetInfo));
-                classifyOut->actionType = FWP_ACTION_BLOCK;
-                return;
-        }
+        case PORTMASTER_VERDICT_BLOCK:
+            INFO("PORTMASTER_VERDICT_BLOCK: %s", print_packet_info(packetInfo));
+            return FWP_ACTION_BLOCK;
 
-    } else { //Request Verdict from Userland
+        case PORTMASTER_VERDICT_ACCEPT:
+            DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", print_packet_info(packetInfo));
+            return FWP_ACTION_PERMIT;
+
+        case PORTMASTER_VERDICT_REDIR_DNS:
+            INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", print_packet_info(packetInfo));
+            redir_from_callout(packetInfo, redirInfo, nb, ipHeaderSize, TRUE);
+            return FWP_ACTION_NONE; // We use FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
+
+        case PORTMASTER_VERDICT_REDIR_TUNNEL:
+            INFO("PORTMASTER_VERDICT_REDIR_TUNNEL: %s", print_packet_info(packetInfo));
+            redir_from_callout(packetInfo, redirInfo, nb, ipHeaderSize, FALSE);
+            return FWP_ACTION_NONE; // We use FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
+
+        case PORTMASTER_VERDICT_GET:
+            ERR("PORTMASTER_VERDICT_GET: %s", print_packet_info(packetInfo));
+            // Continue with operation to send verdict request.
+
+            // We will return FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
+            // classifyMultiple will block and absorb the packet for us.
+            // We need to copy the packet here to continue.
+            // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
+            break;
+
+        default:
+            WARN("unknown verdict: 0x%x {%s}", print_packet_info(packetInfo));
+            return FWP_ACTION_BLOCK;
+    }
+
+    // Request verdict from user land.
+    {
         PDATA_ENTRY dentry;
         pportmaster_packet_info copied_packet_info;
         UINT32 id;
@@ -813,30 +720,24 @@ void classifyAll(portmaster_packet_info* packetInfo,
         // DEBUG: print its TCP 4-tuple
         INFO("Getting verdict for %s", print_packet_info(packetInfo));
 
-        //Block, Absorb, and Copy Packet to packet_cashe
-        //according to https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
-        classifyOut->actionType = FWP_ACTION_BLOCK;
-        classifyOut->flags|= FWPS_CLASSIFY_OUT_FLAG_ABSORB;   //Set Absorb Bit 1
-        classifyOut->rights&= ~FWPS_RIGHT_ACTION_WRITE;       //Set Write Bit 0
-
         //Inbound traffic requires special treatment - this bitshifterei is a special source of error ;-)
         if (packetInfo->direction == 1) { //Inbound
             status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
             if (!NT_SUCCESS(status)) {
                 ERR("Argh!!!!");
-                return;
+                return FWP_ACTION_NONE;
             }
         }
 
         status = copy_packet_data_from_nb(nb, 0, &data, &data_len);
         if (!NT_SUCCESS(status)) {
             ERR("AAAA!!! copy_packet_data_from_nb 2: %d", status);
-            return;
+            return FWP_ACTION_NONE;
         }
 
         INFO("copy_packet_data_from_nb rc=%d, data_len=%d", status, data_len);
 
-        //Even though nb is not used anymore (?) we still shift back (because we have a problem, which we do not understand)
+        // In order to be as clean as possible, we shift back nb, even though it may not be necessary.
         if (packetInfo->direction == 1) { //Inbound
             NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
         }
@@ -845,12 +746,12 @@ void classifyAll(portmaster_packet_info* packetInfo,
         dentry= portmaster_malloc(sizeof(DATA_ENTRY), FALSE);
         if (!dentry) {
             ERR("Insufficient Resources for mallocating dentry");
-            return;
+            return FWP_ACTION_NONE;
         }
         copied_packet_info = portmaster_malloc(sizeof(portmaster_packet_info), FALSE);
         if (!copied_packet_info) {
             ERR("Insufficient Resources for mallocating copied_packet_info");
-            return;
+            return FWP_ACTION_NONE;
         }
 
 
@@ -885,7 +786,231 @@ void classifyAll(portmaster_packet_info* packetInfo,
             }
         }
 
+    }
+    return FWP_ACTION_NONE;
+}
+
+void classifyMultiple(
+    portmaster_packet_info* packetInfo,
+    verdict_cache_t* verdictCache,
+    KSPIN_LOCK* verdictCacheLock,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    FWPS_CLASSIFY_OUT* classifyOut
+    ) {
+    PNET_BUFFER_LIST nbl;
+    PNET_BUFFER nb;
+    UINT32 ipHeaderSize;
+    HANDLE handle;
+
+    /*
+     * The classifyFn may receive multiple netbuffer lists (chained), which in turn may each have multiple netbuffers.
+     * 
+     * Multiple netbuffer lists are possible in stream and forward layers.
+     * Multiple buffers are possible for outgoing data.
+     * 
+     * Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/packet-indication-format
+     */
+
+    // Define variables.
+    FWPS_PACKET_INJECTION_STATE injection_state;
+
+    // First, run checks and get data that applies to all packets.
+
+    // sanity check
+    if (!packetInfo || !verdictCache || !verdictCacheLock || !inMetaValues || !layerData) {
+        ERR("Invalid parameters");
+        classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
+    }
+
+    // If we don't get the right to write, block the packet.
+    // This can happen when a previous filter set a final decision, which we then cat veto.
+    // TODO: Right now this is a safety measure. Evaluate how to handle this case in detail.
+    // Docs: https://docs.microsoft.com/en-us/windows/win32/api/fwpstypes/ns-fwpstypes-fwps_classify_out0
+    if (!(classifyOut->rights & FWPS_RIGHT_ACTION_WRITE)) {
+        classifyOut->actionType = FWP_ACTION_BLOCK;
+        ERR("No right to write -> block: %s", print_packet_info(packetInfo));
+        return;
+    }
+
+    // Get injection handle.
+    if (packetInfo->ipV6) {
+        handle = injectv6_handle;
+    } else {
+        handle = inject_handle;
+    }
+
+    // Interpret layer data as netbuffer list and check if it's a looping packet.
+    // Packets created/injected by us will loop back to us.
+    nbl = (PNET_BUFFER_LIST) layerData;
+    injection_state = FwpsQueryPacketInjectionState(handle, nbl, NULL);
+    if (injection_state == FWPS_PACKET_INJECTED_BY_SELF ||
+        injection_state == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
+        classifyOut->actionType = FWP_ACTION_PERMIT;
+        INFO("packet was in loop, injection_state= %d ", injection_state);
+        return;
+    }
+
+    // Permit fragmented packets.
+    // But of course not the first one, we are checking that one!
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_FRAGMENT_DATA) &&
+        inMetaValues->fragmentMetadata.fragmentOffset != 0) {
+        classifyOut->actionType = FWP_ACTION_PERMIT;
+        INFO("Permitting fragmented packet: %s", print_packet_info(packetInfo));
+        return;
+    }
+
+    // get header size
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_IP_HEADER_SIZE)) {
+        ipHeaderSize = inMetaValues->ipHeaderSize;
+    } else {
+        ERR("AAAAAA!!!!");
+        classifyOut->actionType = FWP_ACTION_BLOCK;
+        return;
+    }
+    if (ipHeaderSize == 0) {
+        ERR("inMetaValues reports an ipHeaderSize of 0");
+        classifyOut->actionType = FWP_ACTION_BLOCK;
+        return;
+    }
+
+    // Get first netbuffer from list.
+    nb = NET_BUFFER_LIST_FIRST_NB(nbl);
+
+    // Check if this is a single netbuffer.
+    if (NET_BUFFER_NEXT_NB(nb) == NULL) {
+        FWP_ACTION_TYPE action;
+
+        // Handle netbuffer list with only one netbuffer.
+        action = classifySingle(packetInfo, verdictCache, verdictCacheLock, inMetaValues, nb, ipHeaderSize);
+        switch (action) {
+        case FWP_ACTION_PERMIT:
+            // Permit packet.
+            classifyOut->actionType = FWP_ACTION_PERMIT;
+            return;
+
+        case FWP_ACTION_BLOCK:
+            // Drop packet.
+            // TODO: Add ability to block packets, ie. respond with informational ICMP packet.
+            classifyOut->actionType = FWP_ACTION_BLOCK;
+            return;
+
+        case FWP_ACTION_NONE:
+            // Packet was fully handled by classifySingle, so we need to steal it.
+            // Block and absorb the packet.
+            // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
+            classifyOut->actionType = FWP_ACTION_BLOCK;
+            classifyOut->flags|= FWPS_CLASSIFY_OUT_FLAG_ABSORB;   // Set Absorb Bit to 1
+            classifyOut->rights&= ~FWPS_RIGHT_ACTION_WRITE;       // Set Write Bit to 0
+            return;
+
+        default:
+            // Unexpected value, block the packet.
+            classifyOut->actionType = FWP_ACTION_BLOCK;
+            return;
+
+        }
+    }
+
+    // Now, handle multiple netbuffers.
+    // As per documentation, this can only happen for outbound data.
+
+    // First edition: Steal the packet and handle every net buffer completely separate.
+    // Block, absorb, and copy the packet (in classifySingle).
+    // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
+    classifyOut->actionType = FWP_ACTION_BLOCK;
+    classifyOut->flags|= FWPS_CLASSIFY_OUT_FLAG_ABSORB;   // Set Absorb Bit to 1
+    classifyOut->rights&= ~FWPS_RIGHT_ACTION_WRITE;       // Set Write Bit to 0
+
+    for (;;) {
+        NTSTATUS status;
+        void* packet;
+        ULONG packet_len;
+        PNET_BUFFER_LIST inject_nbl;
+        FWP_ACTION_TYPE action;
+
+        // Reset packetInfo.
+        packetInfo->protocol = 0;
+        packetInfo->localPort = 0;
+        packetInfo->remotePort = 0;
+        packetInfo->processID = 0;
+
+        // Classify net buffer.
+        action = classifySingle(packetInfo, verdictCache, verdictCacheLock, inMetaValues, nb, ipHeaderSize);
+        switch (action) {
+        case FWP_ACTION_PERMIT:
+            // Permit packet.
+            // We need to re-inject the packet, as returning FWP_ACTION_PERMIT would permit the whole list.
+
+            // Copy the packet data.
+            status = copy_packet_data_from_nb(nb, 0, &packet, &packet_len);
+            if (!NT_SUCCESS(status)) {
+                ERR("AAAA!!! copy_packet_data_from_nb 2: %d", status);
+                return;
+            }
+
+            // Fix checksums, including TCP/UDP.
+            if (!packetInfo->ipV6) {
+                calc_ipv4_checksum(packet, packet_len, TRUE);
+            } else {
+                calc_ipv6_checksum(packet, packet_len, TRUE);
+            }
+
+            // Create a new net buffer list.
+            status = wrap_packet_data_in_nb(packet, packet_len, &inject_nbl);
+            if (!NT_SUCCESS(status)) {
+                ERR("AAAA!!! wrap_packet_data_in_nb failed: %u", status);
+                portmaster_free(packet);
+                return;
+            }
+
+            // Inject packet.
+            if (packetInfo->direction == 0) {
+                INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
+                status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
+                        packetInfo->compartmentId, inject_nbl, free_after_inject,
+                        packet);
+                INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
+            } else {
+                INFO("Rcv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
+                status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
+                        packetInfo->compartmentId, packetInfo->interfaceIndex,
+                        packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
+                        packet);
+                INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
+            }
+
+            if (!NT_SUCCESS(status)) {
+                ERR("FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
+                free_after_inject(packet, inject_nbl, FALSE);
+            }
+
+            break;
+
+        case FWP_ACTION_BLOCK:
+            // Drop packet.
+            // TODO: Add ability to block packets, ie. respond with informational ICMP packet.
+            break;
+
+        case FWP_ACTION_NONE:
+            // Packet has been fully handled by classifySingle.
+            // This will be the case for redirects.
+            // We don't need to do anything here, as we are already stealing the packet.
+            break;
+
+        default:
+            // Unexpected value, drop the packet.
+            break;
+
+        }
+
+        // Handle next net buffer.
+        nb = NET_BUFFER_NEXT_NB(nb);
+        if (nb == NULL) {
+            // We're finished handling all the net buffers in the list.
+            return;
+        }
     }
 }
 
@@ -899,7 +1024,7 @@ void classifyInboundIPv4(
     FWPS_CLASSIFY_OUT* classifyOut) {
 
     // sanity check
-    if (!inFixedValues || !inMetaValues || !layerData || !classifyOut) {
+    if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
@@ -918,7 +1043,7 @@ void classifyInboundIPv4(
         inboundV4PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
 
-    classifyAll(&inboundV4PacketInfo, verdictCacheV4, &verdictCacheV4Lock, inMetaValues, layerData, classifyOut);
+    classifyMultiple(&inboundV4PacketInfo, verdictCacheV4, &verdictCacheV4Lock, inMetaValues, layerData, classifyOut);
 
     return;
 }
@@ -933,7 +1058,7 @@ void classifyOutboundIPv4(
     FWPS_CLASSIFY_OUT* classifyOut) {
 
     // sanity check
-    if (!inFixedValues || !inMetaValues || !layerData || !classifyOut) {
+    if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
@@ -952,7 +1077,7 @@ void classifyOutboundIPv4(
         outboundV4PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
 
-    classifyAll(&outboundV4PacketInfo, verdictCacheV4, &verdictCacheV4Lock, inMetaValues, layerData, classifyOut);
+    classifyMultiple(&outboundV4PacketInfo, verdictCacheV4, &verdictCacheV4Lock, inMetaValues, layerData, classifyOut);
 
     return;
 }
@@ -968,7 +1093,7 @@ void classifyInboundIPv6(
     NTSTATUS status;
 
     // sanity check
-    if (!inFixedValues || !inMetaValues || !layerData || !classifyOut) {
+    if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
@@ -999,7 +1124,7 @@ void classifyInboundIPv6(
     } else {
         inboundV6PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
-    classifyAll(&inboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
+    classifyMultiple(&inboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
     return;
 }
 
@@ -1014,7 +1139,7 @@ void classifyOutboundIPv6(
     NTSTATUS status;
 
     // sanity check
-    if (!inFixedValues || !inMetaValues || !layerData || !classifyOut) {
+    if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
@@ -1045,6 +1170,6 @@ void classifyOutboundIPv6(
     } else {
         outboundV6PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
-    classifyAll(&outboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
+    classifyMultiple(&outboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
     return;
 }
