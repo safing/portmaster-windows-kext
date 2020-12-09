@@ -62,6 +62,7 @@ DRIVER_UNLOAD DriverUnload;
 EVT_WDF_DRIVER_UNLOAD empty_evt_unload;
 
 //IO CTL
+__drv_dispatchType(IRP_MJ_DEVICE_CONTROL) DRIVER_DISPATCH driver_device_control;
 NTSTATUS driver_device_control(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP Irp);
 
 // Initializes required WDFDriver and WDFDevice objects
