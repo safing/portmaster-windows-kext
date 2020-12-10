@@ -881,11 +881,11 @@ void classifyMultiple(
     // Get first netbuffer from list.
     nb = NET_BUFFER_LIST_FIRST_NB(nbl);
 
-    // Check if this is a single netbuffer.
-    if (NET_BUFFER_NEXT_NB(nb) == NULL) {
+    // Check if this is a single net buffer list with only a single net buffer.
+    if (NET_BUFFER_LIST_NEXT_NBL(nbl) == NULL && NET_BUFFER_NEXT_NB(nb) == NULL) {
         FWP_ACTION_TYPE action;
 
-        // Handle netbuffer list with only one netbuffer.
+        // Handle single net buffer.
         action = classifySingle(packetInfo, verdictCache, verdictCacheLock, inMetaValues, nb, ipHeaderSize);
         switch (action) {
         case FWP_ACTION_PERMIT:
@@ -925,93 +925,94 @@ void classifyMultiple(
     SetFlag(classifyOut->flags, FWPS_CLASSIFY_OUT_FLAG_ABSORB); // Set Absorb Flag
     ClearFlag(classifyOut->rights, FWPS_RIGHT_ACTION_WRITE);    // Clear Write Flag
 
-    for (;;) {
-        NTSTATUS status;
-        void* packet;
-        ULONG packet_len;
-        PNET_BUFFER_LIST inject_nbl;
-        FWP_ACTION_TYPE action;
+    // Iterate over net buffer lists.
+    for (; nbl != NULL; nbl = NET_BUFFER_LIST_NEXT_NBL(nbl)) {
+        // Get first netbuffer from list.
+        nb = NET_BUFFER_LIST_FIRST_NB(nbl);
 
-        // Reset packetInfo.
-        packetInfo->protocol = 0;
-        packetInfo->localPort = 0;
-        packetInfo->remotePort = 0;
-        packetInfo->processID = 0;
+        // Iterate over net buffers.
+        for (; nb != NULL; nb = NET_BUFFER_NEXT_NB(nb)) {
 
-        // Classify net buffer.
-        action = classifySingle(packetInfo, verdictCache, verdictCacheLock, inMetaValues, nb, ipHeaderSize);
-        switch (action) {
-        case FWP_ACTION_PERMIT:
-            // Permit packet.
-            // We need to re-inject the packet, as returning FWP_ACTION_PERMIT would permit the whole list.
+            NTSTATUS status;
+            void* packet;
+            ULONG packet_len;
+            PNET_BUFFER_LIST inject_nbl;
+            FWP_ACTION_TYPE action;
 
-            // Copy the packet data.
-            status = copy_packet_data_from_nb(nb, 0, &packet, &packet_len);
-            if (!NT_SUCCESS(status)) {
-                ERR("copy_packet_data_from_nb 2: %d", status);
-                return;
+            // Reset packetInfo.
+            packetInfo->protocol = 0;
+            packetInfo->localPort = 0;
+            packetInfo->remotePort = 0;
+            packetInfo->processID = 0;
+
+            // Classify net buffer.
+            action = classifySingle(packetInfo, verdictCache, verdictCacheLock, inMetaValues, nb, ipHeaderSize);
+            switch (action) {
+            case FWP_ACTION_PERMIT:
+                // Permit packet.
+                // We need to re-inject the packet, as returning FWP_ACTION_PERMIT would permit the whole list.
+
+                // Copy the packet data.
+                status = copy_packet_data_from_nb(nb, 0, &packet, &packet_len);
+                if (!NT_SUCCESS(status)) {
+                    ERR("classifyMultiple copy_packet_data_from_nb failed: %d", status);
+                    return;
+                }
+
+                // Fix checksums, including TCP/UDP.
+                if (!packetInfo->ipV6) {
+                    calc_ipv4_checksum(packet, packet_len, TRUE);
+                } else {
+                    calc_ipv6_checksum(packet, packet_len, TRUE);
+                }
+
+                // Create a new net buffer list.
+                status = wrap_packet_data_in_nb(packet, packet_len, &inject_nbl);
+                if (!NT_SUCCESS(status)) {
+                    ERR("classifyMultiple wrap_packet_data_in_nb failed: %u", status);
+                    portmaster_free(packet);
+                    return;
+                }
+
+                // Inject packet.
+                if (packetInfo->direction == 0) {
+                    INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
+                    status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
+                            packetInfo->compartmentId, inject_nbl, free_after_inject,
+                            packet);
+                    INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
+                } else {
+                    INFO("Rcv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
+                    status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
+                            packetInfo->compartmentId, packetInfo->interfaceIndex,
+                            packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
+                            packet);
+                    INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
+                }
+
+                if (!NT_SUCCESS(status)) {
+                    ERR("FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
+                    free_after_inject(packet, inject_nbl, FALSE);
+                }
+
+                break;
+
+            case FWP_ACTION_BLOCK:
+                // Drop packet.
+                // TODO: Add ability to block packets, ie. respond with informational ICMP packet.
+                break;
+
+            case FWP_ACTION_NONE:
+                // Packet has been fully handled by classifySingle.
+                // This will be the case for redirects.
+                // We don't need to do anything here, as we are already stealing the packet.
+                break;
+
+            default:
+                // Unexpected value, drop the packet.
+                break;
+
             }
-
-            // Fix checksums, including TCP/UDP.
-            if (!packetInfo->ipV6) {
-                calc_ipv4_checksum(packet, packet_len, TRUE);
-            } else {
-                calc_ipv6_checksum(packet, packet_len, TRUE);
-            }
-
-            // Create a new net buffer list.
-            status = wrap_packet_data_in_nb(packet, packet_len, &inject_nbl);
-            if (!NT_SUCCESS(status)) {
-                ERR("wrap_packet_data_in_nb failed: %u", status);
-                portmaster_free(packet);
-                return;
-            }
-
-            // Inject packet.
-            if (packetInfo->direction == 0) {
-                INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
-                status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                        packetInfo->compartmentId, inject_nbl, free_after_inject,
-                        packet);
-                INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
-            } else {
-                INFO("Rcv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
-                status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
-                        packetInfo->compartmentId, packetInfo->interfaceIndex,
-                        packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
-                        packet);
-                INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
-            }
-
-            if (!NT_SUCCESS(status)) {
-                ERR("FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-                free_after_inject(packet, inject_nbl, FALSE);
-            }
-
-            break;
-
-        case FWP_ACTION_BLOCK:
-            // Drop packet.
-            // TODO: Add ability to block packets, ie. respond with informational ICMP packet.
-            break;
-
-        case FWP_ACTION_NONE:
-            // Packet has been fully handled by classifySingle.
-            // This will be the case for redirects.
-            // We don't need to do anything here, as we are already stealing the packet.
-            break;
-
-        default:
-            // Unexpected value, drop the packet.
-            break;
-
-        }
-
-        // Handle next net buffer.
-        nb = NET_BUFFER_NEXT_NB(nb);
-        if (nb == NULL) {
-            // We're finished handling all the net buffers in the list.
-            return;
         }
     }
 }
