@@ -174,7 +174,7 @@ void redir_from_callout(pportmaster_packet_info packetInfo, pportmaster_packet_i
     if (packetInfo->direction == 1) {   //Inbound
         status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
         if (!NT_SUCCESS(status)) {
-            ERR("BBBBBBB!!!!");
+            ERR("failed to retreat net buffer data start");
             return;
         }
     }
@@ -182,7 +182,7 @@ void redir_from_callout(pportmaster_packet_info packetInfo, pportmaster_packet_i
     //Create new Packet -> wrap it in new nb, so we don't need to shift this nb back.
     status = copy_packet_data_from_nb(nb, 0, &packet, &packet_len);
     if (!NT_SUCCESS(status)) {
-        ERR("AAAA!!! copy_packet_data_from_nb 3: %d", status);
+        ERR("copy_packet_data_from_nb 3: %d", status);
         return;
     }
     //Now data should contain a full blown packet
@@ -336,7 +336,7 @@ void redir(pportmaster_packet_info packetInfo, pportmaster_packet_info redirInfo
     // re-inject ...
     status = wrap_packet_data_in_nb(packet, packet_len, &nbl);
     if (!NT_SUCCESS(status)) {
-        ERR("AAAA!!! wrap_packet_data_in_nb failed: %u", status);
+        ERR("wrap_packet_data_in_nb failed: %u", status);
         portmaster_free(packet);
         return;
     }
@@ -490,7 +490,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     // re-inject ...
     status = wrap_packet_data_in_nb(packet, packet_len, &nbl);
     if (!NT_SUCCESS(status)) {
-        ERR("AAAA!!! wrap_packet_data_in_nb failed: %u", status);
+        ERR("wrap_packet_data_in_nb failed: %u", status);
         portmaster_free(packet);
         if (temporary) {
             portmaster_free(packetInfo);
@@ -564,7 +564,7 @@ FWP_ACTION_TYPE classifySingle(
     if (packetInfo->direction == 1) { //Inbound
         status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
         if (!NT_SUCCESS(status)) {
-            ERR("AAAAAA!!!!");
+            ERR("failed to retreat net buffer data start");
             return FWP_ACTION_BLOCK;
         }
     }
@@ -724,14 +724,14 @@ FWP_ACTION_TYPE classifySingle(
         if (packetInfo->direction == 1) { //Inbound
             status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
             if (!NT_SUCCESS(status)) {
-                ERR("Argh!!!!");
+                ERR("failed to retreat net buffer data start");
                 return FWP_ACTION_NONE;
             }
         }
 
         status = copy_packet_data_from_nb(nb, 0, &data, &data_len);
         if (!NT_SUCCESS(status)) {
-            ERR("AAAA!!! copy_packet_data_from_nb 2: %d", status);
+            ERR("copy_packet_data_from_nb 2: %d", status);
             return FWP_ACTION_NONE;
         }
 
@@ -798,10 +798,6 @@ void classifyMultiple(
     void* layerData,
     FWPS_CLASSIFY_OUT* classifyOut
     ) {
-    PNET_BUFFER_LIST nbl;
-    PNET_BUFFER nb;
-    UINT32 ipHeaderSize;
-    HANDLE handle;
 
     /*
      * The classifyFn may receive multiple netbuffer lists (chained), which in turn may each have multiple netbuffers.
@@ -814,10 +810,17 @@ void classifyMultiple(
 
     // Define variables.
     FWPS_PACKET_INJECTION_STATE injection_state;
+    PNET_BUFFER_LIST nbl;
+    PNET_BUFFER nb;
+    UINT32 ipHeaderSize;
+    HANDLE handle;
 
     // First, run checks and get data that applies to all packets.
 
     // sanity check
+    if (!classifyOut) {
+        return;
+    }
     if (!packetInfo || !verdictCache || !verdictCacheLock || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -825,7 +828,7 @@ void classifyMultiple(
     }
 
     // If we don't get the right to write, block the packet.
-    // This can happen when a previous filter set a final decision, which we then cat veto.
+    // This can happen when a previous filter set a final decision, which we then can veto.
     // TODO: Right now this is a safety measure. Evaluate how to handle this case in detail.
     // Docs: https://docs.microsoft.com/en-us/windows/win32/api/fwpstypes/ns-fwpstypes-fwps_classify_out0
     if (!(classifyOut->rights & FWPS_RIGHT_ACTION_WRITE)) {
@@ -865,7 +868,7 @@ void classifyMultiple(
     if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_IP_HEADER_SIZE)) {
         ipHeaderSize = inMetaValues->ipHeaderSize;
     } else {
-        ERR("AAAAAA!!!!");
+        ERR("inMetaValues does not have ipHeaderSize");
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
     }
@@ -901,16 +904,15 @@ void classifyMultiple(
             // Block and absorb the packet.
             // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
             classifyOut->actionType = FWP_ACTION_BLOCK;
-            classifyOut->flags|= FWPS_CLASSIFY_OUT_FLAG_ABSORB;   // Set Absorb Bit to 1
-            classifyOut->rights&= ~FWPS_RIGHT_ACTION_WRITE;       // Set Write Bit to 0
+            SetFlag(classifyOut->flags, FWPS_CLASSIFY_OUT_FLAG_ABSORB); // Set Absorb Flag
+            ClearFlag(classifyOut->rights, FWPS_RIGHT_ACTION_WRITE);    // Clear Write Flag
             return;
-
-        default:
-            // Unexpected value, block the packet.
-            classifyOut->actionType = FWP_ACTION_BLOCK;
-            return;
-
         }
+
+        // Unexpected value, block the packet.
+        ERR("unexpected packet action: %d", action);
+        classifyOut->actionType = FWP_ACTION_BLOCK;
+        return;
     }
 
     // Now, handle multiple netbuffers.
@@ -920,8 +922,8 @@ void classifyMultiple(
     // Block, absorb, and copy the packet (in classifySingle).
     // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
     classifyOut->actionType = FWP_ACTION_BLOCK;
-    classifyOut->flags|= FWPS_CLASSIFY_OUT_FLAG_ABSORB;   // Set Absorb Bit to 1
-    classifyOut->rights&= ~FWPS_RIGHT_ACTION_WRITE;       // Set Write Bit to 0
+    SetFlag(classifyOut->flags, FWPS_CLASSIFY_OUT_FLAG_ABSORB); // Set Absorb Flag
+    ClearFlag(classifyOut->rights, FWPS_RIGHT_ACTION_WRITE);    // Clear Write Flag
 
     for (;;) {
         NTSTATUS status;
@@ -946,7 +948,7 @@ void classifyMultiple(
             // Copy the packet data.
             status = copy_packet_data_from_nb(nb, 0, &packet, &packet_len);
             if (!NT_SUCCESS(status)) {
-                ERR("AAAA!!! copy_packet_data_from_nb 2: %d", status);
+                ERR("copy_packet_data_from_nb 2: %d", status);
                 return;
             }
 
@@ -960,7 +962,7 @@ void classifyMultiple(
             // Create a new net buffer list.
             status = wrap_packet_data_in_nb(packet, packet_len, &inject_nbl);
             if (!NT_SUCCESS(status)) {
-                ERR("AAAA!!! wrap_packet_data_in_nb failed: %u", status);
+                ERR("wrap_packet_data_in_nb failed: %u", status);
                 portmaster_free(packet);
                 return;
             }
@@ -1024,6 +1026,9 @@ void classifyInboundIPv4(
     FWPS_CLASSIFY_OUT* classifyOut) {
 
     // sanity check
+    if (!classifyOut) {
+        return;
+    }
     if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1058,6 +1063,9 @@ void classifyOutboundIPv4(
     FWPS_CLASSIFY_OUT* classifyOut) {
 
     // sanity check
+    if (!classifyOut) {
+        return;
+    }
     if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1093,6 +1101,9 @@ void classifyInboundIPv6(
     NTSTATUS status;
 
     // sanity check
+    if (!classifyOut) {
+        return;
+    }
     if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1139,6 +1150,9 @@ void classifyOutboundIPv6(
     NTSTATUS status;
 
     // sanity check
+    if (!classifyOut) {
+        return;
+    }
     if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
