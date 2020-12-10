@@ -441,13 +441,30 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
             rc = add_verdict(verdictCacheV6, packetInfo, verdict);
             KeReleaseInStackQueuedSpinLock(&lock_handle);
         }
-    }
 
-    //If verdict could not be added, drop and free the packet
-    if (rc != 0) {
-        portmaster_free(packetInfo);
-        portmaster_free(packet);
-        return;
+        //If verdict could not be added, drop and free the packet
+        if (rc != 0) {
+            portmaster_free(packetInfo);
+            portmaster_free(packet);
+            return;
+        }
+
+        // attempt to clean verdict cache
+        {
+            pportmaster_packet_info packet_info_to_free;
+            if (packetInfo->ipV6 == 0) {
+                KeAcquireInStackQueuedSpinLock(&verdictCacheV4Lock, &lock_handle);
+                rc = clean_verdict_cache(verdictCacheV4, &packet_info_to_free);
+                KeReleaseInStackQueuedSpinLock(&lock_handle);
+            } else {
+                KeAcquireInStackQueuedSpinLock(&verdictCacheV6Lock, &lock_handle);
+                rc = clean_verdict_cache(verdictCacheV6, &packet_info_to_free);
+                KeReleaseInStackQueuedSpinLock(&lock_handle);
+            }
+            if (rc == 0) {
+                portmaster_free(packet_info_to_free);
+            }
+        }        
     }
 
     //Handle Packet according to Verdict
