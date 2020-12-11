@@ -552,6 +552,78 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     return;
 }
 
+void copy_and_inject(portmaster_packet_info* packetInfo, PNET_BUFFER nb, UINT32 ipHeaderSize) {
+    NTSTATUS status;
+    HANDLE handle;
+    void* packet;
+    ULONG packet_len;
+    PNET_BUFFER_LIST inject_nbl;
+
+    // Retreat buffer data start for inbound packet.
+    if (packetInfo->direction == 1) { //Inbound
+        status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
+        if (!NT_SUCCESS(status)) {
+            ERR("copy_and_inject > failed to retreat net buffer data start");
+            return;
+        }
+    }
+
+    // Copy the packet data.
+    status = copy_packet_data_from_nb(nb, 0, &packet, &packet_len);
+    if (!NT_SUCCESS(status)) {
+        ERR("copy_and_inject > copy_packet_data_from_nb failed: %d", status);
+        return;
+    }
+
+    // Advance data start back to original position.
+    if (packetInfo->direction == 1) {   //Inbound
+        NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
+    }
+
+    // Fix checksums, including TCP/UDP.
+    if (!packetInfo->ipV6) {
+        calc_ipv4_checksum(packet, packet_len, TRUE);
+    } else {
+        calc_ipv6_checksum(packet, packet_len, TRUE);
+    }
+
+    // Create a new net buffer list.
+    status = wrap_packet_data_in_nb(packet, packet_len, &inject_nbl);
+    if (!NT_SUCCESS(status)) {
+        ERR("copy_and_inject > wrap_packet_data_in_nb failed: %u", status);
+        portmaster_free(packet);
+        return;
+    }
+
+    // Get injection handle.
+    if (packetInfo->ipV6) {
+        handle = injectv6_handle;
+    } else {
+        handle = inject_handle;
+    }
+
+    // Inject packet.
+    if (packetInfo->direction == 0) {
+        INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
+        status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
+                packetInfo->compartmentId, inject_nbl, free_after_inject,
+                packet);
+        INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
+    } else {
+        INFO("Rcv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
+        status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
+                packetInfo->compartmentId, packetInfo->interfaceIndex,
+                packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
+                packet);
+        INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
+    }
+
+    if (!NT_SUCCESS(status)) {
+        ERR("FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
+        free_after_inject(packet, inject_nbl, FALSE);
+    }
+}
+
 /******************************************************************
  * Classify Functions
  ******************************************************************/
@@ -566,7 +638,6 @@ FWP_ACTION_TYPE classifySingle(
     int offset;
     verdict_t verdict;
     int rc;
-    PDATA_ENTRY dentry;
     KLOCK_QUEUE_HANDLE lock_handle_vc, lock_handle_pc;
     pportmaster_packet_info copiedPacketInfo, redirInfo;
     PPM_IPHDR ip_header;
@@ -785,7 +856,7 @@ FWP_ACTION_TYPE classifySingle(
         //btw: Never use static variables in callouts ...
         copied_packet_info->id = register_packet(packetCache, copied_packet_info, data, data_len);
         KeReleaseInStackQueuedSpinLock(&lock_handle_pc);
-        INFO("registered packet with ID %u", copied_packet_info->id);
+        INFO("registered packet with ID %u: %s", copied_packet_info->id, print_ipv4_packet(data));
 
         // send to queue
         /* queuedEntries = */ KeInsertQueue(global_io_queue, &(dentry->entry));
@@ -825,12 +896,21 @@ void classifyMultiple(
      * Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/packet-indication-format
      */
 
+    /*
+     * All NET_BUFFERs in a NET_BUFFER_LIST always belong to the same flow,
+     * which is identified by the five-tuple of TCP/IP (Source IP Address,
+     * Destination IP Address, Source Port, Destination Port, and Protocol).
+     * Source (ish): https://docs.microsoft.com/en-us/windows/win32/fwp/ale-stateful-filtering
+     */
+    
     // Define variables.
     FWPS_PACKET_INJECTION_STATE injection_state;
     PNET_BUFFER_LIST nbl;
     PNET_BUFFER nb;
     UINT32 ipHeaderSize;
     HANDLE handle;
+    UINT32 nbl_loop_i = 0;
+    UINT32 nb_loop_i = 0;
 
     // First, run checks and get data that applies to all packets.
 
@@ -895,66 +975,37 @@ void classifyMultiple(
         return;
     }
 
-    // Get first netbuffer from list.
-    nb = NET_BUFFER_LIST_FIRST_NB(nbl);
-
-    // Check if this is a single net buffer list with only a single net buffer.
-    if (NET_BUFFER_LIST_NEXT_NBL(nbl) == NULL && NET_BUFFER_NEXT_NB(nb) == NULL) {
-        FWP_ACTION_TYPE action;
-
-        // Handle single net buffer.
-        action = classifySingle(packetInfo, verdictCache, verdictCacheLock, inMetaValues, nb, ipHeaderSize);
-        switch (action) {
-        case FWP_ACTION_PERMIT:
-            // Permit packet.
-            classifyOut->actionType = FWP_ACTION_PERMIT;
-            return;
-
-        case FWP_ACTION_BLOCK:
-            // Drop packet.
-            // TODO: Add ability to block packets, ie. respond with informational ICMP packet.
-            classifyOut->actionType = FWP_ACTION_BLOCK;
-            return;
-
-        case FWP_ACTION_NONE:
-            // Packet was fully handled by classifySingle, so we need to steal it.
-            // Block and absorb the packet.
-            // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
-            classifyOut->actionType = FWP_ACTION_BLOCK;
-            SetFlag(classifyOut->flags, FWPS_CLASSIFY_OUT_FLAG_ABSORB); // Set Absorb Flag
-            ClearFlag(classifyOut->rights, FWPS_RIGHT_ACTION_WRITE);    // Clear Write Flag
-            return;
-        }
-
-        // Unexpected value, block the packet.
-        ERR("unexpected packet action: %d", action);
-        classifyOut->actionType = FWP_ACTION_BLOCK;
-        return;
-    }
-
-    // Now, handle multiple netbuffers.
-    // As per documentation, this can only happen for outbound data.
-
-    // First edition: Steal the packet and handle every net buffer completely separate.
-    // Block, absorb, and copy the packet (in classifySingle).
-    // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
-    classifyOut->actionType = FWP_ACTION_BLOCK;
-    SetFlag(classifyOut->flags, FWPS_CLASSIFY_OUT_FLAG_ABSORB); // Set Absorb Flag
-    ClearFlag(classifyOut->rights, FWPS_RIGHT_ACTION_WRITE);    // Clear Write Flag
+    // Handle multiple net buffer lists and net buffers.
+    // Docs say that multiple NBs can only happen for outbound data.
 
     // Iterate over net buffer lists.
     for (; nbl != NULL; nbl = NET_BUFFER_LIST_NEXT_NBL(nbl)) {
+
         // Get first netbuffer from list.
         nb = NET_BUFFER_LIST_FIRST_NB(nbl);
 
+        // Loop guard.
+        nbl_loop_i++;
+        INFO("handling NBL #%d at 0p%p", nbl_loop_i, nbl);
+        if (nbl_loop_i > 100) {
+            ERR("we are looooooopin! wohooooo! NOT.");
+            classifyOut->actionType = FWP_ACTION_BLOCK;
+            return;
+        }
+        nb_loop_i = 0;
+
         // Iterate over net buffers.
         for (; nb != NULL; nb = NET_BUFFER_NEXT_NB(nb)) {
-
-            NTSTATUS status;
-            void* packet;
-            ULONG packet_len;
-            PNET_BUFFER_LIST inject_nbl;
             FWP_ACTION_TYPE action;
+
+            // Loop guard.
+            nb_loop_i++;
+            INFO("handling NB #%d at 0p%p", nb_loop_i, nb);
+            if (nb_loop_i > 1000) {
+                ERR("we are looooooopin! wohooooo! NOT.");
+                classifyOut->actionType = FWP_ACTION_BLOCK;
+                return;
+            }
 
             // Reset packetInfo.
             packetInfo->protocol = 0;
@@ -967,55 +1018,50 @@ void classifyMultiple(
             switch (action) {
             case FWP_ACTION_PERMIT:
                 // Permit packet.
-                // We need to re-inject the packet, as returning FWP_ACTION_PERMIT would permit the whole list.
 
-                // Copy the packet data.
-                status = copy_packet_data_from_nb(nb, 0, &packet, &packet_len);
-                if (!NT_SUCCESS(status)) {
-                    ERR("classifyMultiple copy_packet_data_from_nb failed: %d", status);
+                // Special case:
+                // If there is only one NBL and we already have a verdict in
+                // cache for the first packet, all other NBs will have the
+                // same verdict, as all packets in an NBL belong to the same
+                // connection. So we can directly accept all of them at once.
+                if (nbl_loop_i == 1 && nb_loop_i == 1 && NET_BUFFER_LIST_NEXT_NBL(nbl) == NULL) {
+                    #ifdef DEBUG_ON
+                    for (nb = NET_BUFFER_NEXT_NB(nb); nb != NULL; nb = NET_BUFFER_NEXT_NB(nb)) {
+                        // Loop guard.
+                        nb_loop_i++;
+                        if (nb_loop_i > 1000) {
+                            ERR("we are looooooopin! wohooooo! NOT.");
+                            classifyOut->actionType = FWP_ACTION_BLOCK;
+                            return;
+                        }
+                    }
+                    INFO("permitting whole NBL with %d NBs", nb_loop_i);
+                    #endif // DEBUG
+                    classifyOut->actionType = FWP_ACTION_PERMIT;
                     return;
                 }
 
-                // Fix checksums, including TCP/UDP.
-                if (!packetInfo->ipV6) {
-                    calc_ipv4_checksum(packet, packet_len, TRUE);
-                } else {
-                    calc_ipv6_checksum(packet, packet_len, TRUE);
-                }
-
-                // Create a new net buffer list.
-                status = wrap_packet_data_in_nb(packet, packet_len, &inject_nbl);
-                if (!NT_SUCCESS(status)) {
-                    ERR("classifyMultiple wrap_packet_data_in_nb failed: %u", status);
-                    portmaster_free(packet);
-                    return;
-                }
-
-                // Inject packet.
-                if (packetInfo->direction == 0) {
-                    INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
-                    status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                            packetInfo->compartmentId, inject_nbl, free_after_inject,
-                            packet);
-                    INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
-                } else {
-                    INFO("Rcv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
-                    status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
-                            packetInfo->compartmentId, packetInfo->interfaceIndex,
-                            packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
-                            packet);
-                    INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
-                }
-
-                if (!NT_SUCCESS(status)) {
-                    ERR("FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-                    free_after_inject(packet, inject_nbl, FALSE);
-                }
-
+                // In any other case, we need to re-inject the packet, as
+                // returning FWP_ACTION_PERMIT would permit all NBLs.
+                copy_and_inject(packetInfo, nb, ipHeaderSize);
                 break;
 
             case FWP_ACTION_BLOCK:
                 // Drop packet.
+
+                // Special case:
+                // If there is only one NBL and we already have a verdict in
+                // cache for the first packet, all other NBs will have the
+                // same verdict, as all packets in an NBL belong to the same
+                // connection. So we can directly block all of them at once.
+                if (nbl_loop_i == 1 && nb_loop_i == 1 && NET_BUFFER_LIST_NEXT_NBL(nbl) == NULL) {
+                    INFO("blocking whole NBL");
+                    classifyOut->actionType = FWP_ACTION_BLOCK;
+                    return;
+                }
+
+                // In any other case, we just do nothing to drop the packet, as
+                // returning FWP_ACTION_BLOCK would block all NBLs.
                 // TODO: Add ability to block packets, ie. respond with informational ICMP packet.
                 break;
 
@@ -1032,6 +1078,13 @@ void classifyMultiple(
             }
         }
     }
+
+    // Block and absorb.
+    // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
+    classifyOut->actionType = FWP_ACTION_BLOCK;
+    SetFlag(classifyOut->flags, FWPS_CLASSIFY_OUT_FLAG_ABSORB); // Set Absorb Flag
+    ClearFlag(classifyOut->rights, FWPS_RIGHT_ACTION_WRITE);    // Clear Write Flag
+    return;
 }
 
 void classifyInboundIPv4(
