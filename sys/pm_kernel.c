@@ -263,6 +263,7 @@ VOID DriverUnload(PDRIVER_OBJECT driver_obj) {
 
 VOID empty_evt_unload(WDFDRIVER Driver) {
     UNREFERENCED_PARAMETER(Driver);
+    WdfObjectDelete(Driver);
     return;
 }
 
