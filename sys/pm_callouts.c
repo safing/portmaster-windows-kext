@@ -133,16 +133,14 @@ HANDLE getInjectionHandle(pportmaster_packet_info packetInfo) {
     if (packetInfo->ipV6 == 0) {
         if (packetInfo->direction == 1) { //Inbound
             return inject_in4_handle;
-        } else {
-            return inject_out4_handle;
         }
-    } else {
-        if (packetInfo->direction == 1) { //Inbound
-            return inject_in6_handle;
-        } else {
-            return inject_out6_handle;
-        }
+        return inject_out4_handle;
     }
+
+    if (packetInfo->direction == 1) { //Inbound
+        return inject_in6_handle;
+    }
+    return inject_out6_handle;
 }
 
 NTSTATUS genericNotify(
