@@ -39,9 +39,10 @@ static KSPIN_LOCK verdictCacheV6Lock;
 packet_cache_t* packetCache;    //Not static anymore, because it is also used in pm_kernel.c
 KSPIN_LOCK packetCacheLock;
 
-static HANDLE inject_handle = NULL;
-static HANDLE injectv6_handle = NULL;
-
+static HANDLE inject_in4_handle = NULL;
+static HANDLE inject_out4_handle = NULL;
+static HANDLE inject_in6_handle = NULL;
+static HANDLE inject_out6_handle = NULL;
 
 /******************************************************************
  * Helper Functions
@@ -73,17 +74,33 @@ NTSTATUS initCalloutStructure() {
     // Create the packet injection handles.
     status = FwpsInjectionHandleCreate(AF_INET,
             FWPS_INJECTION_TYPE_NETWORK,
-            &inject_handle);
+            &inject_in4_handle);
     if (!NT_SUCCESS(status)) {
-        ERR("failed to create WFP packet injection handle", status);
+        ERR("failed to create WFP in4 injection handle", status);
+        return status;
+    }
+
+    status = FwpsInjectionHandleCreate(AF_INET,
+            FWPS_INJECTION_TYPE_NETWORK,
+            &inject_out4_handle);
+    if (!NT_SUCCESS(status)) {
+        ERR("failed to create WFP out4 injection handle", status);
         return status;
     }
 
     status = FwpsInjectionHandleCreate(AF_INET6,
             FWPS_INJECTION_TYPE_NETWORK,
-            &injectv6_handle);
+            &inject_in6_handle);
     if (!NT_SUCCESS(status)) {
-        ERR("failed to create WFP ipv6 packet injection handle", status);
+        ERR("failed to create WFP in6 injection handle", status);
+        return status;
+    }
+
+    status = FwpsInjectionHandleCreate(AF_INET6,
+            FWPS_INJECTION_TYPE_NETWORK,
+            &inject_out6_handle);
+    if (!NT_SUCCESS(status)) {
+        ERR("failed to create WFP out6 injection handle", status);
         return status;
     }
 
@@ -91,14 +108,39 @@ NTSTATUS initCalloutStructure() {
 }
 
 void destroyCalloutStructure() {
-    if (inject_handle != NULL) {
-        FwpsInjectionHandleDestroy(inject_handle);
-        inject_handle = NULL;
+    if (inject_in4_handle != NULL) {
+        FwpsInjectionHandleDestroy(inject_in4_handle);
+        inject_in4_handle = NULL;
     }
-    if (injectv6_handle != NULL) {
-        FwpsInjectionHandleDestroy(injectv6_handle);
-        injectv6_handle = NULL;
+
+    if (inject_out4_handle != NULL) {
+        FwpsInjectionHandleDestroy(inject_out4_handle);
+        inject_out4_handle = NULL;
     }
+
+    if (inject_in6_handle != NULL) {
+        FwpsInjectionHandleDestroy(inject_in6_handle);
+        inject_in6_handle = NULL;
+    }
+
+    if (inject_out6_handle != NULL) {
+        FwpsInjectionHandleDestroy(inject_out6_handle);
+        inject_out6_handle = NULL;
+    }
+}
+
+HANDLE getInjectionHandle(pportmaster_packet_info packetInfo) {
+    if (packetInfo->ipV6 == 0) {
+        if (packetInfo->direction == 1) { //Inbound
+            return inject_in4_handle;
+        }
+        return inject_out4_handle;
+    }
+
+    if (packetInfo->direction == 1) { //Inbound
+        return inject_in6_handle;
+    }
+    return inject_out6_handle;
 }
 
 NTSTATUS genericNotify(
@@ -340,12 +382,7 @@ void redir(pportmaster_packet_info packetInfo, pportmaster_packet_info redirInfo
         portmaster_free(packet);
         return;
     }
-
-    if (packetInfo->ipV6 == 0) {
-        handle= inject_handle;
-    } else {
-        handle= injectv6_handle;
-    }
+    handle = getInjectionHandle(packetInfo);    
 
     // Reset routing compartment ID, as we are changing where this is going to.
     // This necessity is unconfirmed.
@@ -514,12 +551,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
         }
         return;
     }
-
-    if (packetInfo->ipV6 == 0) {
-        handle= inject_handle;
-    } else {
-        handle= injectv6_handle;
-    }
+    handle = getInjectionHandle(packetInfo);    
 
     if (packetInfo->direction == 0) {
         INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(packet));
@@ -596,11 +628,7 @@ void copy_and_inject(portmaster_packet_info* packetInfo, PNET_BUFFER nb, UINT32 
     }
 
     // Get injection handle.
-    if (packetInfo->ipV6) {
-        handle = injectv6_handle;
-    } else {
-        handle = inject_handle;
-    }
+    handle = getInjectionHandle(packetInfo);    
 
     // Inject packet.
     if (packetInfo->direction == 0) {
@@ -935,11 +963,7 @@ void classifyMultiple(
     }
 
     // Get injection handle.
-    if (packetInfo->ipV6) {
-        handle = injectv6_handle;
-    } else {
-        handle = inject_handle;
-    }
+    handle = getInjectionHandle(packetInfo);    
 
     // Interpret layer data as netbuffer list and check if it's a looping packet.
     // Packets created/injected by us will loop back to us.
