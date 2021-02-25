@@ -195,8 +195,10 @@ CTL_CODE(SIOCTL_TYPE, 0x804, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
 /****************************************************************************/
 /* MISC                                                       */
 /****************************************************************************/
-#define IP_LOCALHOST 0x7F000001
-#define IP_LOCALHOST_NBO 0x0100007F // Network Byte Order!
+#define IPv4_LOCALHOST_NET_MASK 0xFF000000
+#define IPv4_LOCALHOST_NET 0x7F000000
+
+#define IPv6_LOCALHOST_PART4 0x1
 
 #define PORT_DNS 53
 #define PORT_DNS_NBO 0x3500

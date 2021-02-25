@@ -779,7 +779,27 @@ FWP_ACTION_TYPE classifySingle(
         NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
     }
 
-    // check verdict cache
+    // Special case: Windows cannot recv-inject packets to localhost, so we
+    // need to let everything through. The Portmaster must be aware of this
+    // and check both sides of the connection when it sees the outgoing packet
+    // on the loopback interface.
+    if (packetInfo->direction == 1) {
+        if (packetInfo->ipV6) {
+            if (
+                packetInfo->localIP[0] == 0 &&
+                packetInfo->localIP[1] == 0 &&
+                packetInfo->localIP[2] == 0 &&
+                packetInfo->localIP[3] == IPv6_LOCALHOST_PART4
+            ) {
+                return FWP_ACTION_PERMIT;
+            }
+        } else {
+            if ((packetInfo->localIP[0] & IPv4_LOCALHOST_NET_MASK) == IPv4_LOCALHOST_NET) {
+                return FWP_ACTION_PERMIT;
+            }
+        }
+    }
+
     // Set default verdict.
     verdict = PORTMASTER_VERDICT_GET;
 
