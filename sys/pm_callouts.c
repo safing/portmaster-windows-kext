@@ -780,15 +780,29 @@ FWP_ACTION_TYPE classifySingle(
     }
 
     // check verdict cache
+    // Set default verdict.
+    verdict = PORTMASTER_VERDICT_GET;
+
+    // Lock to check verdict cache.
     KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lock_handle_vc);
-    // First check if the packet is a DNAT response
-    if (packetInfo->remotePort == PORT_G17EP || packetInfo->remotePort == PORT_DNS) {
+
+    // First check if the packet is a DNAT response.
+    if (packetInfo->direction == 1 &&
+        (packetInfo->remotePort == PORT_G17EP || packetInfo->remotePort == PORT_DNS)) {
         verdict = check_reverse_redir(verdictCache, packetInfo, &redirInfo);
+        
+        // Verdicts returned by check_reverse_redir must only be
+        // PORTMASTER_VERDICT_REDIR_DNS or PORTMASTER_VERDICT_REDIR_TUNNEL.
+        if (verdict != PORTMASTER_VERDICT_REDIR_DNS && verdict != PORTMASTER_VERDICT_REDIR_TUNNEL) {
+            verdict = PORTMASTER_VERDICT_GET;
+        }
     }
-    // Check verdict normally if we did not detect a packet that should be reverse DNAT-ed
-    if (!(verdict == PORTMASTER_VERDICT_REDIR_DNS || verdict == PORTMASTER_VERDICT_REDIR_TUNNEL)) {
+
+    // Check verdict normally if we did not detect a packet that should be reverse DNAT-ed.
+    if (verdict == PORTMASTER_VERDICT_GET) {
         verdict = check_verdict(verdictCache, packetInfo);
-        // If packet should be DNAT-ed set redirInfo to packetInfo
+        
+        // If packet should be DNAT-ed set redirInfo to packetInfo.
         if (verdict == PORTMASTER_VERDICT_REDIR_DNS || verdict == PORTMASTER_VERDICT_REDIR_TUNNEL) {
             redirInfo = packetInfo;
         }
@@ -827,6 +841,10 @@ FWP_ACTION_TYPE classifySingle(
             // We need to copy the packet here to continue.
             // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
             break;
+
+        case PORTMASTER_VERDICT_ERROR:
+            ERR("PORTMASTER_VERDICT_ERROR");
+            return FWP_ACTION_BLOCK;
 
         default:
             WARN("unknown verdict: 0x%x {%s}", print_packet_info(packetInfo));
