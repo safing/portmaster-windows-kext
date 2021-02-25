@@ -119,7 +119,8 @@ NTSTATUS wrap_packet_data_in_nb(void* packet_data, int packet_len, PNET_BUFFER_L
         IoFreeMdl(mdl);
         return status;
     }
-    *nbl= buffers;
+    *nbl = buffers;
+
     return STATUS_SUCCESS;
 }
 

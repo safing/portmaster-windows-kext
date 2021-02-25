@@ -237,8 +237,8 @@ void redir_from_callout(pportmaster_packet_info packetInfo, pportmaster_packet_i
 
 }
 
-void redir(pportmaster_packet_info packetInfo, pportmaster_packet_info redirInfo, void* packet, ULONG packet_len, BOOL dns) {
-    PNET_BUFFER_LIST nbl;
+void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo, void* packet, ULONG packet_len, BOOL dns) {
+    PNET_BUFFER_LIST inject_nbl;
     HANDLE handle= NULL;
     NTSTATUS status;
 
@@ -376,9 +376,9 @@ void redir(pportmaster_packet_info packetInfo, pportmaster_packet_info redirInfo
     }
 
     // re-inject ...
-    status = wrap_packet_data_in_nb(packet, packet_len, &nbl);
+    status = wrap_packet_data_in_nb(packet, packet_len, &inject_nbl);
     if (!NT_SUCCESS(status)) {
-        ERR("wrap_packet_data_in_nb failed: %u", status);
+        ERR("redir > wrap_packet_data_in_nb failed: %u", status);
         portmaster_free(packet);
         return;
     }
@@ -386,26 +386,26 @@ void redir(pportmaster_packet_info packetInfo, pportmaster_packet_info redirInfo
 
     // Reset routing compartment ID, as we are changing where this is going to.
     // This necessity is unconfirmed.
-    packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
+    // packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
 
     if (packetInfo->direction == 0) {
-        INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(packet));
+        // INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                packetInfo->compartmentId, nbl, free_after_inject,
+                packetInfo->compartmentId, inject_nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
     } else {
-        INFO("Rcv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(packet));
+        // INFO("Recv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
                 packetInfo->compartmentId, packetInfo->interfaceIndex,
-                packetInfo->subInterfaceIndex, nbl, free_after_inject,
+                packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
     }
 
     if (!NT_SUCCESS(status)) {
         ERR("FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-        free_after_inject(packet, nbl, FALSE);
+        free_after_inject(packet, inject_nbl, FALSE);
     }
 
     return;
@@ -416,19 +416,34 @@ static void free_after_inject(VOID *context, NET_BUFFER_LIST *nbl, BOOLEAN dispa
     PNET_BUFFER nb;
     UNREFERENCED_PARAMETER(dispatch_level);
 
-    // sanity check
+    // Sanity check.
     if (!nbl) {
         ERR("Invalid parameters");
         return;
     }
 
-    INFO("free_after_inject: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(context));
+#ifdef DEBUG_ON
+    // Check for NBL errors.
+    {
+        NDIS_STATUS status;
+        status = NET_BUFFER_LIST_STATUS(nbl)
+        if (status == STATUS_SUCCESS) {
+            INFO("injection success: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(context));
+        } else {
+            // Check here for status codes: http://errorco.de/win32/ntstatus-h/
+            ERR("injection failure: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(context));
+        }
+    }
+#endif // DEBUG
+
+    // Free allocated NBL/Mdl memory.
     nb = NET_BUFFER_LIST_FIRST_NB(nbl);
     mdl = NET_BUFFER_FIRST_MDL(nb);
     IoFreeMdl(mdl);
     FwpsFreeNetBufferList(nbl);
 
-    if (context != NULL) {  //context is packet
+    // Free packet, which is passed as context.
+    if (context != NULL) {
         portmaster_free(context);
     }
 }
@@ -437,7 +452,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     pportmaster_packet_info packetInfo;
     void* packet;
     size_t packet_len;
-    PNET_BUFFER_LIST nbl;
+    PNET_BUFFER_LIST inject_nbl;
     NTSTATUS status;
     KLOCK_QUEUE_HANDLE lock_handle;
     HANDLE handle;
@@ -533,52 +548,52 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     }
 
     // Fix checksums, including TCP/UDP.
-    // Apparently, we have to do this whenever we inject packet, no matter if
-    // we modify it or not.
     if (!packetInfo->ipV6) {
         calc_ipv4_checksum(packet, packet_len, TRUE);
     } else {
         calc_ipv6_checksum(packet, packet_len, TRUE);
     }
 
-    // re-inject ...
-    status = wrap_packet_data_in_nb(packet, packet_len, &nbl);
+    // Create a new net buffer list.
+    status = wrap_packet_data_in_nb(packet, packet_len, &inject_nbl);
     if (!NT_SUCCESS(status)) {
-        ERR("wrap_packet_data_in_nb failed: %u", status);
+        ERR("respond_with_verdict > wrap_packet_data_in_nb failed: %u", status);
         portmaster_free(packet);
         if (temporary) {
             portmaster_free(packetInfo);
         }
         return;
     }
+
+    // Get injection handle.
     handle = getInjectionHandle(packetInfo);    
 
+    // Inject packet.
     if (packetInfo->direction == 0) {
-        INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(packet));
+        // INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                packetInfo->compartmentId, nbl, free_after_inject,
+                packetInfo->compartmentId, inject_nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
     } else {
-        INFO("Rcv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(packet));
-        INFO("INJECTING packet id %u", packetInfo->id);
+        // INFO("Recv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
                 packetInfo->compartmentId, packetInfo->interfaceIndex,
-                packetInfo->subInterfaceIndex, nbl, free_after_inject,
+                packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
     }
 
     if (!NT_SUCCESS(status)) {
         ERR("FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-        //free_after_inject(packet, nbl, FALSE);
+        free_after_inject(packet, inject_nbl, FALSE);
     }
 
     // If verdict is temporary, free packetInfo
     if (temporary) {
         portmaster_free(packetInfo);
     }
-    // otherwise leaf packetInfo because it is referenced by verdict_cache
+    // otherwise, keep packetInfo because it is referenced by verdict_cache
 
     INFO("Good Bye respondWithVerdict");
     return;
@@ -632,13 +647,13 @@ void copy_and_inject(portmaster_packet_info* packetInfo, PNET_BUFFER nb, UINT32 
 
     // Inject packet.
     if (packetInfo->direction == 0) {
-        INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
+        // INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
                 packetInfo->compartmentId, inject_nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
     } else {
-        INFO("Rcv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
+        // INFO("Recv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
                 packetInfo->compartmentId, packetInfo->interfaceIndex,
                 packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
@@ -764,16 +779,50 @@ FWP_ACTION_TYPE classifySingle(
         NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
     }
 
-    // check verdict cache
-    KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lock_handle_vc);
-    // First check if the packet is a DNAT response
-    if (packetInfo->remotePort == PORT_G17EP || packetInfo->remotePort == PORT_DNS) {
-        verdict = check_reverse_redir(verdictCache, packetInfo, &redirInfo);
+    // Special case: Windows cannot recv-inject packets to localhost, so we
+    // need to let everything through. The Portmaster must be aware of this
+    // and check both sides of the connection when it sees the outgoing packet
+    // on the loopback interface.
+    if (packetInfo->direction == 1) {
+        if (packetInfo->ipV6) {
+            if (
+                packetInfo->localIP[0] == 0 &&
+                packetInfo->localIP[1] == 0 &&
+                packetInfo->localIP[2] == 0 &&
+                packetInfo->localIP[3] == IPv6_LOCALHOST_PART4
+            ) {
+                return FWP_ACTION_PERMIT;
+            }
+        } else {
+            if ((packetInfo->localIP[0] & IPv4_LOCALHOST_NET_MASK) == IPv4_LOCALHOST_NET) {
+                return FWP_ACTION_PERMIT;
+            }
+        }
     }
-    // Check verdict normally if we did not detect a packet that should be reverse DNAT-ed
-    if (!(verdict == PORTMASTER_VERDICT_REDIR_DNS || verdict == PORTMASTER_VERDICT_REDIR_TUNNEL)) {
+
+    // Set default verdict.
+    verdict = PORTMASTER_VERDICT_GET;
+
+    // Lock to check verdict cache.
+    KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lock_handle_vc);
+
+    // First check if the packet is a DNAT response.
+    if (packetInfo->direction == 1 &&
+        (packetInfo->remotePort == PORT_G17EP || packetInfo->remotePort == PORT_DNS)) {
+        verdict = check_reverse_redir(verdictCache, packetInfo, &redirInfo);
+        
+        // Verdicts returned by check_reverse_redir must only be
+        // PORTMASTER_VERDICT_REDIR_DNS or PORTMASTER_VERDICT_REDIR_TUNNEL.
+        if (verdict != PORTMASTER_VERDICT_REDIR_DNS && verdict != PORTMASTER_VERDICT_REDIR_TUNNEL) {
+            verdict = PORTMASTER_VERDICT_GET;
+        }
+    }
+
+    // Check verdict normally if we did not detect a packet that should be reverse DNAT-ed.
+    if (verdict == PORTMASTER_VERDICT_GET) {
         verdict = check_verdict(verdictCache, packetInfo);
-        // If packet should be DNAT-ed set redirInfo to packetInfo
+        
+        // If packet should be DNAT-ed set redirInfo to packetInfo.
         if (verdict == PORTMASTER_VERDICT_REDIR_DNS || verdict == PORTMASTER_VERDICT_REDIR_TUNNEL) {
             redirInfo = packetInfo;
         }
@@ -812,6 +861,10 @@ FWP_ACTION_TYPE classifySingle(
             // We need to copy the packet here to continue.
             // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
             break;
+
+        case PORTMASTER_VERDICT_ERROR:
+            ERR("PORTMASTER_VERDICT_ERROR");
+            return FWP_ACTION_BLOCK;
 
         default:
             WARN("unknown verdict: 0x%x {%s}", print_packet_info(packetInfo));
