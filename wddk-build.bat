@@ -6,4 +6,4 @@
 set WDDK_INSTALL=install\WDDK\
 mkdir %WDDK_INSTALL%
 
-build -cZg
+build -cZgew
