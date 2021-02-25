@@ -96,6 +96,7 @@ NTSTATUS register_filter(
     const GUID layer
 ) {
     NTSTATUS status = STATUS_SUCCESS;
+    FWPM_FILTER_CONDITION filterConditions[1] = {0};
 
     filter->displayData.name = filter_name;
     filter->displayData.description = filter_description;
@@ -103,9 +104,17 @@ NTSTATUS register_filter(
     filter->subLayerKey = PORTMASTER_SUBLAYER_GUID;
     filter->weight.type = FWP_UINT8;
     filter->weight.uint8 = 0xf;     // The weight of this filter within its sublayer
-    filter->numFilterConditions = 0;    // If you specify 0, this filter invokes its callout for all traffic in its layer
     filter->layerKey = layer;   // This layer must match the layer that ExampleCallout is registered to
     filter->action.calloutKey = callout_guid;
+
+    filterConditions[0].fieldKey = FWPM_CONDITION_FLAGS;
+	filterConditions[0].matchType = FWP_MATCH_FLAGS_NONE_SET;
+	filterConditions[0].conditionValue.type = FWP_UINT32;
+	filterConditions[0].conditionValue.uint32 = FWP_CONDITION_FLAG_IS_FRAGMENT | FWP_CONDITION_FLAG_IS_FRAGMENT_GROUP;
+
+    filter->filterCondition = filterConditions;
+    filter->numFilterConditions = 1;    // If you specify 0, this filter invokes its callout for all traffic in its layer
+
     status = FwpmFilterAdd(filter_engine_handle, filter, NULL, filter_id);
     if (!NT_SUCCESS(status)) {
         ERR("Could not register Portmaster filter '%ls' functions: rc=0x%08x", filter_name, status);

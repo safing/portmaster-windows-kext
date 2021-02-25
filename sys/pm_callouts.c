@@ -690,6 +690,7 @@ FWP_ACTION_TYPE classifySingle(
     void* data;
     BOOL copiedNBForPacketInfo= FALSE;
     HANDLE handle;
+    BOOL fragmentation_detected = FALSE;
 
     //Inbound traffic requires special treatment - dafuq?
     if (packetInfo->direction == 1) { //Inbound
@@ -739,11 +740,19 @@ FWP_ACTION_TYPE classifySingle(
         copiedNBForPacketInfo = TRUE;
     }
 
-    // get protocol
+    // Get protocol and check for fragmentation.
     if (packetInfo->ipV6) {
         packetInfo->protocol = ((UINT8*) data)[6];
+        // TODO: Handle Extensions Headers.
+        if (packetInfo->protocol == 44) {
+            fragmentation_detected = TRUE;
+        }
     } else {
         packetInfo->protocol = ((UINT8*) data)[9];
+        // Check if either the MF flag is set or if the fragment offset is not 0.
+        if ((((UINT16*) data)[9] & 0x00FFFFFF) > 0) {
+            fragmentation_detected = TRUE;
+        }
     }
 
     // get ports
@@ -777,6 +786,12 @@ FWP_ACTION_TYPE classifySingle(
     //Shift back
     if (packetInfo->direction == 1) { //Inbound
         NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
+    }
+
+    // Special case: Accept all fragmented packets, as Windows will reassemble
+    // and then indicate the full packet to the callout.
+    if (fragmentation_detected) {
+        return FWP_ACTION_PERMIT;
     }
 
     // Special case: Windows cannot recv-inject packets to localhost, so we
@@ -1031,6 +1046,8 @@ void classifyMultiple(
 
     // Permit fragmented packets.
     // But of course not the first one, we are checking that one!
+    // Documentation:
+    // https://docs.microsoft.com/en-us/windows-hardware/drivers/network/wfp-layer-requirements-and-restrictions
     if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_FRAGMENT_DATA) &&
         inMetaValues->fragmentMetadata.fragmentOffset != 0) {
         classifyOut->actionType = FWP_ACTION_PERMIT;
