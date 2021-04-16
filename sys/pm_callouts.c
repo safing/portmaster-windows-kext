@@ -280,7 +280,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
                     tcp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
                 }
 
-                // UDP
+            // UDP
             } else if (ip_header->Protocol == 17 && packet_len >= ip_header_len + 8 /* UDP Header */) {
                 PUDP_HEADER udp_header = (PUDP_HEADER) ((UINT8*)packet + ip_header_len);
 
@@ -428,7 +428,7 @@ static void free_after_inject(VOID *context, NET_BUFFER_LIST *nbl, BOOLEAN dispa
     // Check for NBL errors.
     {
         NDIS_STATUS status;
-        status = NET_BUFFER_LIST_STATUS(nbl)
+        status = NET_BUFFER_LIST_STATUS(nbl);
         if (status == STATUS_SUCCESS) {
             INFO("injection success: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(context));
         } else {
@@ -841,7 +841,7 @@ FWP_ACTION_TYPE classifySingle(
             return FWP_ACTION_BLOCK;
 
         case PORTMASTER_VERDICT_ACCEPT:
-            DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", print_packet_info(packetInfo));
+            INFO("PORTMASTER_VERDICT_ACCEPT: %s", print_packet_info(packetInfo));
             return FWP_ACTION_PERMIT;
 
         case PORTMASTER_VERDICT_REDIR_DNS:
@@ -855,7 +855,7 @@ FWP_ACTION_TYPE classifySingle(
             return FWP_ACTION_NONE; // We use FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
 
         case PORTMASTER_VERDICT_GET:
-            ERR("PORTMASTER_VERDICT_GET: %s", print_packet_info(packetInfo));
+            INFO("PORTMASTER_VERDICT_GET: %s", print_packet_info(packetInfo));
             // Continue with operation to send verdict request.
 
             // We will return FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
@@ -1070,7 +1070,7 @@ void classifyMultiple(
 
         // Loop guard.
         nbl_loop_i++;
-        INFO("handling NBL #%d at 0p%p", nbl_loop_i, nbl);
+        DEBUG("handling NBL #%d at 0p%p", nbl_loop_i, nbl);
         if (nbl_loop_i > 100) {
             ERR("we are looooooopin! wohooooo! NOT.");
             classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1084,7 +1084,7 @@ void classifyMultiple(
 
             // Loop guard.
             nb_loop_i++;
-            INFO("handling NB #%d at 0p%p", nb_loop_i, nb);
+            DEBUG("handling NB #%d at 0p%p", nb_loop_i, nb);
             if (nb_loop_i > 1000) {
                 ERR("we are looooooopin! wohooooo! NOT.");
                 classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1119,7 +1119,7 @@ void classifyMultiple(
                             return;
                         }
                     }
-                    INFO("permitting whole NBL with %d NBs", nb_loop_i);
+                    DEBUG("permitting whole NBL with %d NBs", nb_loop_i);
                     #endif // DEBUG
                     classifyOut->actionType = FWP_ACTION_PERMIT;
                     return;
@@ -1139,7 +1139,7 @@ void classifyMultiple(
                 // same verdict, as all packets in an NBL belong to the same
                 // connection. So we can directly block all of them at once.
                 if (nbl_loop_i == 1 && nb_loop_i == 1 && NET_BUFFER_LIST_NEXT_NBL(nbl) == NULL) {
-                    INFO("blocking whole NBL");
+                    DEBUG("blocking whole NBL");
                     classifyOut->actionType = FWP_ACTION_BLOCK;
                     return;
                 }
