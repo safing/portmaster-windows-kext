@@ -997,21 +997,12 @@ void classifyMultiple(
 
     // sanity check
     if (!classifyOut) {
+        ERR("Missing classifyOut");
         return;
     }
     if (!packetInfo || !verdictCache || !verdictCacheLock || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
-        return;
-    }
-
-    // If we don't get the right to write, block the packet.
-    // This can happen when a previous filter set a final decision, which we then can veto.
-    // TODO: Right now this is a safety measure. Evaluate how to handle this case in detail.
-    // Docs: https://docs.microsoft.com/en-us/windows/win32/api/fwpstypes/ns-fwpstypes-fwps_classify_out0
-    if (!(classifyOut->rights & FWPS_RIGHT_ACTION_WRITE)) {
-        classifyOut->actionType = FWP_ACTION_BLOCK;
-        ERR("No right to write -> block: %s", print_packet_info(packetInfo));
         return;
     }
 
@@ -1025,9 +1016,23 @@ void classifyMultiple(
     if (injection_state == FWPS_PACKET_INJECTED_BY_SELF ||
         injection_state == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
         classifyOut->actionType = FWP_ACTION_PERMIT;
+
+        // We must always hard permit here, as the Windows Firewall sometimes
+        // blocks our injected packets.
+        // The follow-up (directly accepted) packets are not blocked.
+        // Note: Hard Permit is now the default and is set immediately in the
+        // callout.
+
         INFO("packet was in loop, injection_state= %d ", injection_state);
         return;
     }
+
+    #ifdef DEBUG_ON
+    // Print if packet is injected by someone else for debugging purposes.
+    if (injection_state == FWPS_PACKET_INJECTED_BY_OTHER) {
+        INFO("packet was injected by other, injection_state= %d ", injection_state);
+    }
+    #endif // DEBUG
 
     // Permit fragmented packets.
     // But of course not the first one, we are checking that one!
@@ -1159,8 +1164,8 @@ void classifyMultiple(
     // Block and absorb.
     // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
     classifyOut->actionType = FWP_ACTION_BLOCK;
-    SetFlag(classifyOut->flags, FWPS_CLASSIFY_OUT_FLAG_ABSORB); // Set Absorb Flag
-    ClearFlag(classifyOut->rights, FWPS_RIGHT_ACTION_WRITE);    // Clear Write Flag
+    classifyOut->flags |= FWPS_CLASSIFY_OUT_FLAG_ABSORB; // Set Absorb Flag
+    classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;     // Clear Write Flag
     return;
 }
 
@@ -1173,10 +1178,19 @@ void classifyInboundIPv4(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
 
-    // sanity check
+    // Sanity check 1
     if (!classifyOut) {
+        ERR("Missing classifyOut");
         return;
     }
+
+    // Use hard blocking and permitting.
+    // This ensure that:
+    // 1) Our blocks cannot be overruled by any other firewall.
+    // 2) Our permits have a better chance of getting through the Windows Firewall.
+    classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE; // Hard block.
+
+    // Sanity check 2
     if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1210,10 +1224,19 @@ void classifyOutboundIPv4(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
 
-    // sanity check
+    // Sanity check 1
     if (!classifyOut) {
+        ERR("Missing classifyOut");
         return;
     }
+
+    // Use hard blocking and permitting.
+    // This ensure that:
+    // 1) Our blocks cannot be overruled by any other firewall.
+    // 2) Our permits have a better chance of getting through the Windows Firewall.
+    classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE; // Hard block.
+
+    // Sanity check 2
     if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1248,10 +1271,19 @@ void classifyInboundIPv6(
     FWPS_CLASSIFY_OUT* classifyOut) {
     NTSTATUS status;
 
-    // sanity check
+    // Sanity check 1
     if (!classifyOut) {
+        ERR("Missing classifyOut");
         return;
     }
+
+    // Use hard blocking and permitting.
+    // This ensure that:
+    // 1) Our blocks cannot be overruled by any other firewall.
+    // 2) Our permits have a better chance of getting through the Windows Firewall.
+    classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE; // Hard block.
+
+    // Sanity check 2
     if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1297,10 +1329,19 @@ void classifyOutboundIPv6(
     FWPS_CLASSIFY_OUT* classifyOut) {
     NTSTATUS status;
 
-    // sanity check
+    // Sanity check 1
     if (!classifyOut) {
+        ERR("Missing classifyOut");
         return;
     }
+
+    // Use hard blocking and permitting.
+    // This ensure that:
+    // 1) Our blocks cannot be overruled by any other firewall.
+    // 2) Our permits have a better chance of getting through the Windows Firewall.
+    classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE; // Hard block.
+
+    // Sanity check 2
     if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;

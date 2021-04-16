@@ -103,6 +103,7 @@ NTSTATUS register_filter(
     filter->subLayerKey = PORTMASTER_SUBLAYER_GUID;
     filter->weight.type = FWP_UINT8;
     filter->weight.uint8 = 15;     // The weight of this filter within its sublayer
+    filter->flags = FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT;
     filter->numFilterConditions = 0;    // If you specify 0, this filter invokes its callout for all traffic in its layer
     filter->layerKey = layer;   // This layer must match the layer that ExampleCallout is registered to
     filter->action.calloutKey = callout_guid;
