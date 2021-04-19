@@ -90,20 +90,25 @@ char* print_packet_info(pportmaster_packet_info packetInfo) {
     static char buf[512];  //this is NOT threadsafe but quick.
 
     if (packetInfo->ipV6 == 1) {
-        RtlStringCbPrintfA(buf, sizeof(buf), "[%X%02X:%X%02X:%X%02X:%X%02X:%X%02X:%X%02X:%X%02X:%X%02X]:%hu --> [%X%02X:%X%02X:%X%02X:%X%02X:%X%02X:%X%02X:%X%02X:%X%02X]:%hu",
+        RtlStringCbPrintfA(buf, sizeof(buf), "[%X%02X:%X%02X:%X%02X:%X%02X:%X%02X:%X%02X:%X%02X:%X%02X]:%hu <-%d-> [%X%02X:%X%02X:%X%02X:%X%02X:%X%02X:%X%02X:%X%02X:%X%02X]:%hu",
             FORMAT_ADDR(packetInfo->localIP[0]),
             FORMAT_ADDR(packetInfo->localIP[1]),
             FORMAT_ADDR(packetInfo->localIP[2]),
             FORMAT_ADDR(packetInfo->localIP[3]),
             packetInfo->localPort,
+            packetInfo->direction,
             FORMAT_ADDR(packetInfo->remoteIP[0]),
             FORMAT_ADDR(packetInfo->remoteIP[1]),
             FORMAT_ADDR(packetInfo->remoteIP[2]),
             FORMAT_ADDR(packetInfo->remoteIP[3]),
             packetInfo->remotePort);
     } else {
-        RtlStringCbPrintfA(buf, sizeof(buf), "%d.%d.%d.%d:%hu --> %d.%d.%d.%d:%hu",
-            FORMAT_ADDR(packetInfo->localIP[0]), packetInfo->localPort, FORMAT_ADDR(packetInfo->remoteIP[0]), packetInfo->remotePort);
+        RtlStringCbPrintfA(buf, sizeof(buf), "%d.%d.%d.%d:%hu <-%d-> %d.%d.%d.%d:%hu",
+            FORMAT_ADDR(packetInfo->localIP[0]),
+            packetInfo->localPort,
+            packetInfo->direction,
+            FORMAT_ADDR(packetInfo->remoteIP[0]),
+            packetInfo->remotePort);
     }
     return buf;
 }

@@ -25,11 +25,6 @@
 /******************************************************************
  * Global (static) data structures
  ******************************************************************/
-static portmaster_packet_info inboundV4PacketInfo = {0};
-static portmaster_packet_info outboundV4PacketInfo = {0};
-static portmaster_packet_info inboundV6PacketInfo = {0};
-static portmaster_packet_info outboundV6PacketInfo = {0};
-
 static verdict_cache_t* verdictCacheV4;
 static KSPIN_LOCK verdictCacheV4Lock;
 
@@ -274,7 +269,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
                     if (dns) {
                         tcp_header->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
                     } else {
-                        tcp_header->DstPort= PORT_G17EP_NBO; // Port 717 in Network Byte Order!
+                        tcp_header->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
                     }
                 } else {
                     tcp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
@@ -288,7 +283,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
                     if (dns) {
                         udp_header->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
                     } else {
-                        udp_header->DstPort= PORT_G17EP_NBO; // Port 717 in Network Byte Order!
+                        udp_header->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
                     }
                 } else {
                     udp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
@@ -333,7 +328,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
                     if (dns) {
                         tcp_header->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
                     } else {
-                        tcp_header->DstPort= PORT_G17EP_NBO; // Port 717 in Network Byte Order!
+                        tcp_header->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
                     }
                 } else {
                     tcp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
@@ -347,7 +342,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
                     if (dns) {
                         udp_header->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
                     } else {
-                        udp_header->DstPort= PORT_G17EP_NBO; // Port 717 in Network Byte Order!
+                        udp_header->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
                     }
                 } else {
                     udp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
@@ -810,7 +805,7 @@ FWP_ACTION_TYPE classifySingle(
 
     // First check if the packet is a DNAT response.
     if (packetInfo->direction == 1 &&
-        (packetInfo->remotePort == PORT_G17EP || packetInfo->remotePort == PORT_DNS)) {
+        (packetInfo->remotePort == PORT_PM_SPN_ENTRY || packetInfo->remotePort == PORT_DNS)) {
         verdict = check_reverse_redir(verdictCache, packetInfo, &redirInfo);
         
         // Verdicts returned by check_reverse_redir must only be
@@ -873,44 +868,38 @@ FWP_ACTION_TYPE classifySingle(
             return FWP_ACTION_BLOCK;
     }
 
-    // Request verdict from user land.
+    // Handle packet of unknown connection.
     {
         PDATA_ENTRY dentry;
         pportmaster_packet_info copied_packet_info;
+        BOOL fast_tracked = FALSE;
         UINT32 id;
-        //char buf[256];
         int rc;
 
-        // get process ID
+        // Get the process ID.
         if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_PROCESS_ID)) {
             packetInfo->processID = inMetaValues->processId;
         } else {
             packetInfo->processID = 0;
         }
 
-        // DEBUG: print its TCP 4-tuple
-        INFO("Getting verdict for %s", print_packet_info(packetInfo));
+        // Check if the packet is redirected to the Portmaster and can be fast-tracked.
+        if (
+            packetInfo->direction == 1 &&
+            (packetInfo->localPort == PORT_DNS ||
+                packetInfo->localPort == PORT_PM_API ||
+                packetInfo->localPort == PORT_PM_SPN_ENTRY) &&
+            packetInfo->localIP[0] == packetInfo->localIP[0] &&
+            packetInfo->localIP[1] == packetInfo->localIP[1] &&
+            packetInfo->localIP[2] == packetInfo->localIP[2] &&
+            packetInfo->localIP[3] == packetInfo->localIP[3]
+        ) {
+            fast_tracked = TRUE;
+            packetInfo->flags |= PM_STATUS_FAST_TRACK_PERMITTED;
 
-        //Inbound traffic requires special treatment - this bitshifterei is a special source of error ;-)
-        if (packetInfo->direction == 1) { //Inbound
-            status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
-            if (!NT_SUCCESS(status)) {
-                ERR("failed to retreat net buffer data start");
-                return FWP_ACTION_NONE;
-            }
-        }
-
-        status = copy_packet_data_from_nb(nb, 0, &data, &data_len);
-        if (!NT_SUCCESS(status)) {
-            ERR("copy_packet_data_from_nb 2: %d", status);
-            return FWP_ACTION_NONE;
-        }
-
-        INFO("copy_packet_data_from_nb rc=%d, data_len=%d", status, data_len);
-
-        // In order to be as clean as possible, we shift back nb, even though it may not be necessary.
-        if (packetInfo->direction == 1) { //Inbound
-            NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
+            INFO("Fast-tracking %s", print_packet_info(packetInfo));
+        } else {
+            INFO("Getting verdict for %s", print_packet_info(packetInfo));
         }
 
         // allocate queue entry and copy packetInfo
@@ -922,24 +911,63 @@ FWP_ACTION_TYPE classifySingle(
         copied_packet_info = portmaster_malloc(sizeof(portmaster_packet_info), FALSE);
         if (!copied_packet_info) {
             ERR("Insufficient Resources for mallocating copied_packet_info");
+            // TODO: free other allocated memory.
             return FWP_ACTION_NONE;
         }
-
-
         RtlCopyMemory(copied_packet_info, packetInfo, sizeof(portmaster_packet_info));
-        copied_packet_info->packetSize = data_len;
         dentry->ppacket = copied_packet_info;
 
-        //Register Packet
-        //INFO("packetInfo->compartmentId= %d, ->interfaceIndex= %d, ->subInterfaceIndex= %d", packetInfo->compartmentId, packetInfo->interfaceIndex, packetInfo->subInterfaceIndex);
-        DEBUG("trying to register packet");
-        KeAcquireInStackQueuedSpinLock(&packetCacheLock, &lock_handle_pc);
-        //Lock packet cache because "register_packet" and "clean_packet_cache" must never run simultaniously
-        //Explicit lock is required, because two or more callouts can run simultaniously
-        //btw: Never use static variables in callouts ...
-        copied_packet_info->id = register_packet(packetCache, copied_packet_info, data, data_len);
-        KeReleaseInStackQueuedSpinLock(&lock_handle_pc);
-        INFO("registered packet with ID %u: %s", copied_packet_info->id, print_ipv4_packet(data));
+        // If fast-tracked, add verdict to cache immediately.
+        if (fast_tracked) {
+            // Add to verdict cache
+            KeAcquireInStackQueuedSpinLock(&verdictCacheV4Lock, &lock_handle_vc);
+            rc = add_verdict(verdictCache, copied_packet_info, PORTMASTER_VERDICT_ACCEPT);
+            KeReleaseInStackQueuedSpinLock(&lock_handle_vc);
+
+            // In case of failure, abort and free copied data.
+            if (rc != 0) {
+                ERR("failed to add verdict: %d", rc);
+                portmaster_free(copied_packet_info);
+                // TODO: free other allocated memory.
+                return FWP_ACTION_NONE;
+            }
+        
+        } else {
+            // If not fast-tracked, copy the packet and register it.
+
+            //Inbound traffic requires special treatment - this bitshifterei is a special source of error ;-)
+            if (packetInfo->direction == 1) { //Inbound
+                status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
+                if (!NT_SUCCESS(status)) {
+                    ERR("failed to retreat net buffer data start");
+                    // TODO: free other allocated memory.
+                    return FWP_ACTION_NONE;
+                }
+            }
+
+            // Copy the packet data.
+            status = copy_packet_data_from_nb(nb, 0, &data, &data_len);
+            if (!NT_SUCCESS(status)) {
+                ERR("copy_packet_data_from_nb 2: %d", status);
+                // TODO: free other allocated memory.
+                return FWP_ACTION_NONE;
+            }
+            copied_packet_info->packetSize = data_len;
+            INFO("copy_packet_data_from_nb rc=%d, data_len=%d", status, data_len);
+
+            // In order to be as clean as possible, we shift back nb, even though it may not be necessary.
+            if (packetInfo->direction == 1) { //Inbound
+                NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
+            }
+
+            // Register packet.
+            DEBUG("trying to register packet");
+            KeAcquireInStackQueuedSpinLock(&packetCacheLock, &lock_handle_pc);
+            // Explicit lock is required, because two or more callouts can run simultaneously.
+            copied_packet_info->id = register_packet(packetCache, copied_packet_info, data, data_len);
+            KeReleaseInStackQueuedSpinLock(&lock_handle_pc);
+            INFO("registered packet with ID %u: %s", copied_packet_info->id, print_ipv4_packet(data));
+        }
 
         // send to queue
         /* queuedEntries = */ KeInsertQueue(global_io_queue, &(dentry->entry));
@@ -957,8 +985,11 @@ FWP_ACTION_TYPE classifySingle(
             }
         }
 
+        if (fast_tracked) {
+            return FWP_ACTION_PERMIT;
+        }
+        return FWP_ACTION_NONE;
     }
-    return FWP_ACTION_NONE;
 }
 
 void classifyMultiple(
@@ -1157,7 +1188,8 @@ void classifyMultiple(
 
             default:
                 // Unexpected value, drop the packet.
-                break;
+                classifyOut->actionType = FWP_ACTION_BLOCK;
+                return;
 
             }
         }
@@ -1179,6 +1211,7 @@ void classifyInboundIPv4(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
+    portmaster_packet_info inboundV4PacketInfo = {0};
 
     // Sanity check 1
     if (!classifyOut) {
@@ -1225,6 +1258,7 @@ void classifyOutboundIPv4(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
+    portmaster_packet_info outboundV4PacketInfo = {0};
 
     // Sanity check 1
     if (!classifyOut) {
@@ -1271,6 +1305,7 @@ void classifyInboundIPv6(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
+    portmaster_packet_info inboundV6PacketInfo = {0};
     NTSTATUS status;
 
     // Sanity check 1
@@ -1329,6 +1364,7 @@ void classifyOutboundIPv6(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
+    portmaster_packet_info outboundV6PacketInfo = {0};
     NTSTATUS status;
 
     // Sanity check 1
