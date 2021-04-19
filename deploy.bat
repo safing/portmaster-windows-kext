@@ -9,3 +9,6 @@ call wddk-build.bat
 SignTool sign /v /s TestCertStoreName /n TestCertName %WDDK_SOURCE%
 echo Copy the signed Kernel Driver from %WDDK_SOURCE% to %MINGW_DEST%
 copy %WDDK_SOURCE% %MINGW_DEST%
+
+echo Copy the Kernel Driver to Portmaster updates dir as dev version
+copy %WDDK_SOURCE% C:\ProgramData\Safing\Portmaster\updates\windows_amd64\kext\portmaster-kext_v0-0-0.sys

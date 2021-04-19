@@ -280,7 +280,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
                     tcp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
                 }
 
-                // UDP
+            // UDP
             } else if (ip_header->Protocol == 17 && packet_len >= ip_header_len + 8 /* UDP Header */) {
                 PUDP_HEADER udp_header = (PUDP_HEADER) ((UINT8*)packet + ip_header_len);
 
@@ -386,18 +386,20 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
 
     // Reset routing compartment ID, as we are changing where this is going to.
     // This necessity is unconfirmed.
+    // Experience shows that using the compartment ID can sometimes cause errors.
+    // It seems safer to always use UNSPECIFIED_COMPARTMENT_ID.
     // packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
 
     if (packetInfo->direction == 0) {
         // INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                packetInfo->compartmentId, inject_nbl, free_after_inject,
+                UNSPECIFIED_COMPARTMENT_ID, inject_nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
     } else {
         // INFO("Recv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
-                packetInfo->compartmentId, packetInfo->interfaceIndex,
+                UNSPECIFIED_COMPARTMENT_ID, packetInfo->interfaceIndex,
                 packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
@@ -426,7 +428,7 @@ static void free_after_inject(VOID *context, NET_BUFFER_LIST *nbl, BOOLEAN dispa
     // Check for NBL errors.
     {
         NDIS_STATUS status;
-        status = NET_BUFFER_LIST_STATUS(nbl)
+        status = NET_BUFFER_LIST_STATUS(nbl);
         if (status == STATUS_SUCCESS) {
             INFO("injection success: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(context));
         } else {
@@ -572,13 +574,13 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     if (packetInfo->direction == 0) {
         // INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                packetInfo->compartmentId, inject_nbl, free_after_inject,
+                UNSPECIFIED_COMPARTMENT_ID, inject_nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
     } else {
         // INFO("Recv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
-                packetInfo->compartmentId, packetInfo->interfaceIndex,
+                UNSPECIFIED_COMPARTMENT_ID, packetInfo->interfaceIndex,
                 packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
@@ -649,13 +651,13 @@ void copy_and_inject(portmaster_packet_info* packetInfo, PNET_BUFFER nb, UINT32 
     if (packetInfo->direction == 0) {
         // INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                packetInfo->compartmentId, inject_nbl, free_after_inject,
+                UNSPECIFIED_COMPARTMENT_ID, inject_nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
     } else {
         // INFO("Recv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
-                packetInfo->compartmentId, packetInfo->interfaceIndex,
+                UNSPECIFIED_COMPARTMENT_ID, packetInfo->interfaceIndex,
                 packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
                 packet);
         INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
@@ -839,7 +841,7 @@ FWP_ACTION_TYPE classifySingle(
             return FWP_ACTION_BLOCK;
 
         case PORTMASTER_VERDICT_ACCEPT:
-            DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", print_packet_info(packetInfo));
+            INFO("PORTMASTER_VERDICT_ACCEPT: %s", print_packet_info(packetInfo));
             return FWP_ACTION_PERMIT;
 
         case PORTMASTER_VERDICT_REDIR_DNS:
@@ -853,7 +855,7 @@ FWP_ACTION_TYPE classifySingle(
             return FWP_ACTION_NONE; // We use FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
 
         case PORTMASTER_VERDICT_GET:
-            ERR("PORTMASTER_VERDICT_GET: %s", print_packet_info(packetInfo));
+            INFO("PORTMASTER_VERDICT_GET: %s", print_packet_info(packetInfo));
             // Continue with operation to send verdict request.
 
             // We will return FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
@@ -997,21 +999,12 @@ void classifyMultiple(
 
     // sanity check
     if (!classifyOut) {
+        ERR("Missing classifyOut");
         return;
     }
     if (!packetInfo || !verdictCache || !verdictCacheLock || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
-        return;
-    }
-
-    // If we don't get the right to write, block the packet.
-    // This can happen when a previous filter set a final decision, which we then can veto.
-    // TODO: Right now this is a safety measure. Evaluate how to handle this case in detail.
-    // Docs: https://docs.microsoft.com/en-us/windows/win32/api/fwpstypes/ns-fwpstypes-fwps_classify_out0
-    if (!(classifyOut->rights & FWPS_RIGHT_ACTION_WRITE)) {
-        classifyOut->actionType = FWP_ACTION_BLOCK;
-        ERR("No right to write -> block: %s", print_packet_info(packetInfo));
         return;
     }
 
@@ -1025,9 +1018,23 @@ void classifyMultiple(
     if (injection_state == FWPS_PACKET_INJECTED_BY_SELF ||
         injection_state == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
         classifyOut->actionType = FWP_ACTION_PERMIT;
+
+        // We must always hard permit here, as the Windows Firewall sometimes
+        // blocks our injected packets.
+        // The follow-up (directly accepted) packets are not blocked.
+        // Note: Hard Permit is now the default and is set immediately in the
+        // callout.
+
         INFO("packet was in loop, injection_state= %d ", injection_state);
         return;
     }
+
+    #ifdef DEBUG_ON
+    // Print if packet is injected by someone else for debugging purposes.
+    if (injection_state == FWPS_PACKET_INJECTED_BY_OTHER) {
+        INFO("packet was injected by other, injection_state= %d ", injection_state);
+    }
+    #endif // DEBUG
 
     // Permit fragmented packets.
     // But of course not the first one, we are checking that one!
@@ -1063,7 +1070,7 @@ void classifyMultiple(
 
         // Loop guard.
         nbl_loop_i++;
-        INFO("handling NBL #%d at 0p%p", nbl_loop_i, nbl);
+        DEBUG("handling NBL #%d at 0p%p", nbl_loop_i, nbl);
         if (nbl_loop_i > 100) {
             ERR("we are looooooopin! wohooooo! NOT.");
             classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1077,7 +1084,7 @@ void classifyMultiple(
 
             // Loop guard.
             nb_loop_i++;
-            INFO("handling NB #%d at 0p%p", nb_loop_i, nb);
+            DEBUG("handling NB #%d at 0p%p", nb_loop_i, nb);
             if (nb_loop_i > 1000) {
                 ERR("we are looooooopin! wohooooo! NOT.");
                 classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1112,7 +1119,7 @@ void classifyMultiple(
                             return;
                         }
                     }
-                    INFO("permitting whole NBL with %d NBs", nb_loop_i);
+                    DEBUG("permitting whole NBL with %d NBs", nb_loop_i);
                     #endif // DEBUG
                     classifyOut->actionType = FWP_ACTION_PERMIT;
                     return;
@@ -1132,7 +1139,7 @@ void classifyMultiple(
                 // same verdict, as all packets in an NBL belong to the same
                 // connection. So we can directly block all of them at once.
                 if (nbl_loop_i == 1 && nb_loop_i == 1 && NET_BUFFER_LIST_NEXT_NBL(nbl) == NULL) {
-                    INFO("blocking whole NBL");
+                    DEBUG("blocking whole NBL");
                     classifyOut->actionType = FWP_ACTION_BLOCK;
                     return;
                 }
@@ -1159,8 +1166,8 @@ void classifyMultiple(
     // Block and absorb.
     // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
     classifyOut->actionType = FWP_ACTION_BLOCK;
-    SetFlag(classifyOut->flags, FWPS_CLASSIFY_OUT_FLAG_ABSORB); // Set Absorb Flag
-    ClearFlag(classifyOut->rights, FWPS_RIGHT_ACTION_WRITE);    // Clear Write Flag
+    classifyOut->flags |= FWPS_CLASSIFY_OUT_FLAG_ABSORB; // Set Absorb Flag
+    classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;     // Clear Write Flag
     return;
 }
 
@@ -1173,10 +1180,19 @@ void classifyInboundIPv4(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
 
-    // sanity check
+    // Sanity check 1
     if (!classifyOut) {
+        ERR("Missing classifyOut");
         return;
     }
+
+    // Use hard blocking and permitting.
+    // This ensure that:
+    // 1) Our blocks cannot be overruled by any other firewall.
+    // 2) Our permits have a better chance of getting through the Windows Firewall.
+    classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE; // Hard block.
+
+    // Sanity check 2
     if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1210,10 +1226,19 @@ void classifyOutboundIPv4(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
 
-    // sanity check
+    // Sanity check 1
     if (!classifyOut) {
+        ERR("Missing classifyOut");
         return;
     }
+
+    // Use hard blocking and permitting.
+    // This ensure that:
+    // 1) Our blocks cannot be overruled by any other firewall.
+    // 2) Our permits have a better chance of getting through the Windows Firewall.
+    classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE; // Hard block.
+
+    // Sanity check 2
     if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1248,10 +1273,19 @@ void classifyInboundIPv6(
     FWPS_CLASSIFY_OUT* classifyOut) {
     NTSTATUS status;
 
-    // sanity check
+    // Sanity check 1
     if (!classifyOut) {
+        ERR("Missing classifyOut");
         return;
     }
+
+    // Use hard blocking and permitting.
+    // This ensure that:
+    // 1) Our blocks cannot be overruled by any other firewall.
+    // 2) Our permits have a better chance of getting through the Windows Firewall.
+    classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE; // Hard block.
+
+    // Sanity check 2
     if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1297,10 +1331,19 @@ void classifyOutboundIPv6(
     FWPS_CLASSIFY_OUT* classifyOut) {
     NTSTATUS status;
 
-    // sanity check
+    // Sanity check 1
     if (!classifyOut) {
+        ERR("Missing classifyOut");
         return;
     }
+
+    // Use hard blocking and permitting.
+    // This ensure that:
+    // 1) Our blocks cannot be overruled by any other firewall.
+    // 2) Our permits have a better chance of getting through the Windows Firewall.
+    classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE; // Hard block.
+
+    // Sanity check 2
     if (!inFixedValues || !inMetaValues || !layerData) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;

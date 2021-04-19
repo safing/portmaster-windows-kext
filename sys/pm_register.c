@@ -75,12 +75,12 @@ NTSTATUS register_sublayer() {
     sublayer.displayData.name = PORTMASTER_SUBLAYER_NAME;
     sublayer.displayData.description = PORTMASTER_SUBLAYER_DESCRIPTION;
     sublayer.flags = 0;
-    sublayer.weight = 0x0f;
+    sublayer.weight = 0xFFFF;
     status = FwpmSubLayerAdd(filter_engine_handle, &sublayer, NULL);
     if (!NT_SUCCESS(status)) {
-        // INFO("Could not register Portmaster sublayer: rc=0x%08x", status);
+        INFO("Could not register Portmaster sublayer: rc=0x%08x", status);
     } else {
-        // INFO("Portmaster sublayer registered");
+        INFO("Portmaster sublayer registered");
     }
     return status;
 }
@@ -102,7 +102,8 @@ NTSTATUS register_filter(
     filter->action.type = FWP_ACTION_CALLOUT_TERMINATING;   // Says this filter's callout MUST make a block/permit decision. Also see doc excerpts below.
     filter->subLayerKey = PORTMASTER_SUBLAYER_GUID;
     filter->weight.type = FWP_UINT8;
-    filter->weight.uint8 = 0xf;     // The weight of this filter within its sublayer
+    filter->weight.uint8 = 15;     // The weight of this filter within its sublayer
+    filter->flags = FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT;
     filter->numFilterConditions = 0;    // If you specify 0, this filter invokes its callout for all traffic in its layer
     filter->layerKey = layer;   // This layer must match the layer that ExampleCallout is registered to
     filter->action.calloutKey = callout_guid;
@@ -110,7 +111,7 @@ NTSTATUS register_filter(
     if (!NT_SUCCESS(status)) {
         ERR("Could not register Portmaster filter '%ls' functions: rc=0x%08x", filter_name, status);
     } else {
-        // INFO("Portmaster filter registered");
+        INFO("Portmaster filter registered");
     }
 
     // From https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/fwpsk/nf-fwpsk-fwpscalloutregister0
