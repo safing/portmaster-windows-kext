@@ -25,11 +25,6 @@
 /******************************************************************
  * Global (static) data structures
  ******************************************************************/
-static portmaster_packet_info inboundV4PacketInfo = {0};
-static portmaster_packet_info outboundV4PacketInfo = {0};
-static portmaster_packet_info inboundV6PacketInfo = {0};
-static portmaster_packet_info outboundV6PacketInfo = {0};
-
 static verdict_cache_t* verdictCacheV4;
 static KSPIN_LOCK verdictCacheV4Lock;
 
@@ -1179,6 +1174,7 @@ void classifyInboundIPv4(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
+    portmaster_packet_info inboundV4PacketInfo = {0};
 
     // Sanity check 1
     if (!classifyOut) {
@@ -1225,6 +1221,7 @@ void classifyOutboundIPv4(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
+    portmaster_packet_info outboundV4PacketInfo = {0};
 
     // Sanity check 1
     if (!classifyOut) {
@@ -1271,6 +1268,7 @@ void classifyInboundIPv6(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
+    portmaster_packet_info inboundV6PacketInfo = {0};
     NTSTATUS status;
 
     // Sanity check 1
@@ -1329,6 +1327,7 @@ void classifyOutboundIPv6(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
+    portmaster_packet_info outboundV6PacketInfo = {0};
     NTSTATUS status;
 
     // Sanity check 1
