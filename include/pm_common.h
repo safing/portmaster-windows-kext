@@ -29,7 +29,7 @@ typedef struct {
     UINT8 direction;
     UINT8 ipV6;                         //True: IPv6, False: IPv4
     UINT8 protocol;                     //Protocol (UDP, TCP, ...)
-    UINT8 dummy;                        //Dummy for alignment
+    UINT8 flags;                        //Flags
     UINT32 localIP[4];                  //Source Address, only srcIP[0] if IPv4
     UINT32 remoteIP[4];                 //Destination Address
     UINT16 localPort;                   //Source Port
@@ -39,6 +39,13 @@ typedef struct {
     UINT32 subInterfaceIndex;
     UINT32 packetSize;
 } portmaster_packet_info, *pportmaster_packet_info;
+
+
+/*
+ * Packet Info Flags
+ */
+#define PM_STATUS_FAST_TRACK_PERMITTED 0x01
+#define PM_STATUS_SOCKET_AUTH          0x02
 
 /*
  * IPv4 Header.
