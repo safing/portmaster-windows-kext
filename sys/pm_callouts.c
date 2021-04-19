@@ -269,7 +269,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
                     if (dns) {
                         tcp_header->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
                     } else {
-                        tcp_header->DstPort= PORT_G17EP_NBO; // Port 717 in Network Byte Order!
+                        tcp_header->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
                     }
                 } else {
                     tcp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
@@ -283,7 +283,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
                     if (dns) {
                         udp_header->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
                     } else {
-                        udp_header->DstPort= PORT_G17EP_NBO; // Port 717 in Network Byte Order!
+                        udp_header->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
                     }
                 } else {
                     udp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
@@ -328,7 +328,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
                     if (dns) {
                         tcp_header->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
                     } else {
-                        tcp_header->DstPort= PORT_G17EP_NBO; // Port 717 in Network Byte Order!
+                        tcp_header->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
                     }
                 } else {
                     tcp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
@@ -342,7 +342,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
                     if (dns) {
                         udp_header->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
                     } else {
-                        udp_header->DstPort= PORT_G17EP_NBO; // Port 717 in Network Byte Order!
+                        udp_header->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
                     }
                 } else {
                     udp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
@@ -805,7 +805,7 @@ FWP_ACTION_TYPE classifySingle(
 
     // First check if the packet is a DNAT response.
     if (packetInfo->direction == 1 &&
-        (packetInfo->remotePort == PORT_G17EP || packetInfo->remotePort == PORT_DNS)) {
+        (packetInfo->remotePort == PORT_PM_SPN_ENTRY || packetInfo->remotePort == PORT_DNS)) {
         verdict = check_reverse_redir(verdictCache, packetInfo, &redirInfo);
         
         // Verdicts returned by check_reverse_redir must only be
