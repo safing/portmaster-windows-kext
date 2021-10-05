@@ -884,15 +884,17 @@ FWP_ACTION_TYPE classifySingle(
         }
 
         // Check if the packet is redirected to the Portmaster and can be fast-tracked.
+        // TODO: Use this for all localhost communication.
+        // TODO: Then, check the incoming part in the Portmaster together with the outgoing part.
         if (
             packetInfo->direction == 1 &&
             (packetInfo->localPort == PORT_DNS ||
                 packetInfo->localPort == PORT_PM_API ||
                 packetInfo->localPort == PORT_PM_SPN_ENTRY) &&
-            packetInfo->localIP[0] == packetInfo->localIP[0] &&
-            packetInfo->localIP[1] == packetInfo->localIP[1] &&
-            packetInfo->localIP[2] == packetInfo->localIP[2] &&
-            packetInfo->localIP[3] == packetInfo->localIP[3]
+            packetInfo->localIP[0] == packetInfo->remoteIP[0] &&
+            packetInfo->localIP[1] == packetInfo->remoteIP[1] &&
+            packetInfo->localIP[2] == packetInfo->remoteIP[2] &&
+            packetInfo->localIP[3] == packetInfo->remoteIP[3]
         ) {
             fast_tracked = TRUE;
             packetInfo->flags |= PM_STATUS_FAST_TRACK_PERMITTED;
