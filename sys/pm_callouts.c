@@ -481,14 +481,31 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
 
     //Store permanent verdicts in verdictCache
     if (!temporary) {
-        if (packetInfo->ipV6 == 0) {
-            KeAcquireInStackQueuedSpinLock(&verdictCacheV4Lock, &lock_handle);
-            rc = add_verdict(verdictCacheV4, packetInfo, verdict);
-            KeReleaseInStackQueuedSpinLock(&lock_handle);
-        } else {
-            KeAcquireInStackQueuedSpinLock(&verdictCacheV6Lock, &lock_handle);
-            rc = add_verdict(verdictCacheV6, packetInfo, verdict);
-            KeReleaseInStackQueuedSpinLock(&lock_handle);
+        verdict_cache_t* verdictCache = verdictCacheV4;
+        KSPIN_LOCK* verdictCacheLock = &verdictCacheV4Lock;
+        pportmaster_packet_info packet_info_to_free;
+        int cleanRC;
+
+        // Switch to IPv6 cache and lock if needed.
+        if (packetInfo->ipV6) {
+            verdictCache = verdictCacheV6;
+            verdictCacheLock = &verdictCacheV6Lock;
+        }
+
+        // Acquire exlusive lock as we are changing the verdict cache.
+        KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lock_handle);
+
+        // Add to verdict cache
+        rc = add_verdict(verdictCache, packetInfo, verdict);
+
+        // Free after adding.
+        cleanRC = clean_verdict_cache(verdictCache, &packet_info_to_free);
+
+        KeReleaseInStackQueuedSpinLock(&lock_handle);
+
+        // Free returned packet info.
+        if (cleanRC == 0) {
+            portmaster_free(packet_info_to_free);
         }
 
         //If verdict could not be added, drop and free the packet
@@ -497,23 +514,6 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
             portmaster_free(packet);
             return;
         }
-
-        // attempt to clean verdict cache
-        {
-            pportmaster_packet_info packet_info_to_free;
-            if (packetInfo->ipV6 == 0) {
-                KeAcquireInStackQueuedSpinLock(&verdictCacheV4Lock, &lock_handle);
-                rc = clean_verdict_cache(verdictCacheV4, &packet_info_to_free);
-                KeReleaseInStackQueuedSpinLock(&lock_handle);
-            } else {
-                KeAcquireInStackQueuedSpinLock(&verdictCacheV6Lock, &lock_handle);
-                rc = clean_verdict_cache(verdictCacheV6, &packet_info_to_free);
-                KeReleaseInStackQueuedSpinLock(&lock_handle);
-            }
-            if (rc == 0) {
-                portmaster_free(packet_info_to_free);
-            }
-        }        
     }
 
     //Handle Packet according to Verdict
@@ -780,6 +780,7 @@ FWP_ACTION_TYPE classifySingle(
     // need to let everything through. The Portmaster must be aware of this
     // and check both sides of the connection when it sees the outgoing packet
     // on the loopback interface.
+    // TODO: Use the new fast-tracking system for this.
     if (packetInfo->direction == 1) {
         if (packetInfo->ipV6) {
             if (
@@ -884,15 +885,17 @@ FWP_ACTION_TYPE classifySingle(
         }
 
         // Check if the packet is redirected to the Portmaster and can be fast-tracked.
+        // TODO: Use this for all localhost communication.
+        // TODO: Then, check the incoming part in the Portmaster together with the outgoing part.
         if (
             packetInfo->direction == 1 &&
             (packetInfo->localPort == PORT_DNS ||
                 packetInfo->localPort == PORT_PM_API ||
                 packetInfo->localPort == PORT_PM_SPN_ENTRY) &&
-            packetInfo->localIP[0] == packetInfo->localIP[0] &&
-            packetInfo->localIP[1] == packetInfo->localIP[1] &&
-            packetInfo->localIP[2] == packetInfo->localIP[2] &&
-            packetInfo->localIP[3] == packetInfo->localIP[3]
+            packetInfo->localIP[0] == packetInfo->remoteIP[0] &&
+            packetInfo->localIP[1] == packetInfo->remoteIP[1] &&
+            packetInfo->localIP[2] == packetInfo->remoteIP[2] &&
+            packetInfo->localIP[3] == packetInfo->remoteIP[3]
         ) {
             fast_tracked = TRUE;
             packetInfo->flags |= PM_STATUS_FAST_TRACK_PERMITTED;
@@ -919,10 +922,24 @@ FWP_ACTION_TYPE classifySingle(
 
         // If fast-tracked, add verdict to cache immediately.
         if (fast_tracked) {
+            pportmaster_packet_info packet_info_to_free;
+            int cleanRC;
+
+            // Acquire exlusive lock as we are changing the verdict cache.
+            KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lock_handle_vc);
+
             // Add to verdict cache
-            KeAcquireInStackQueuedSpinLock(&verdictCacheV4Lock, &lock_handle_vc);
             rc = add_verdict(verdictCache, copied_packet_info, PORTMASTER_VERDICT_ACCEPT);
+
+            // Free after adding.
+            cleanRC = clean_verdict_cache(verdictCache, &packet_info_to_free);
+
             KeReleaseInStackQueuedSpinLock(&lock_handle_vc);
+
+            // Free returned packet info.
+            if (cleanRC == 0) {
+                portmaster_free(packet_info_to_free);
+            }
 
             // In case of failure, abort and free copied data.
             if (rc != 0) {

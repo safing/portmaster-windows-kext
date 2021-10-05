@@ -160,7 +160,7 @@ verdict_t check_verdict(verdict_cache_t* verdict_cache, pportmaster_packet_info 
 
     // check if list is empty
     if (!verdict_cache->head) {
-        INFO("verdicht_cache was empty");
+        INFO("verdict_cache was empty");
         return PORTMASTER_VERDICT_GET;
     }
 
