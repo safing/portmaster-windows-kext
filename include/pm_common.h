@@ -136,15 +136,15 @@ typedef INT8 verdict_t;
  * Packet cache:
  * - One entry can be as big as the MTU - eg. 1500 Bytes.
  * - But normally it will be much smaller, eg. a TCP SYN packet.
- * - A size of 1024 with a mean entry size of 750 Bytes would result in a max space requirement of about 750KB.
+ * - A size of 512 with a mean entry size of 750 Bytes would result in a max space requirement of about 380KB.
  * - This cache is quickly emptied, but is not purged, so errors in Portmaster could result in dead entries.
  * Verdict cache:
  * - On entry has about 50 Bytes.
- * - A size of 2048 would result in a max space requirements of about 100KB.
+ * - A size of 1024 would result in a max space requirements of about 50KB.
  * - This cache is not emptied or purged, it will pretty much always be at max capacity.
  */
-#define PM_PACKET_CACHE_SIZE 1024
-#define PM_VERDICT_CACHE_SIZE 2048
+#define PM_PACKET_CACHE_SIZE 512
+#define PM_VERDICT_CACHE_SIZE 1024
 
 /*
  * Container for Verdicts
