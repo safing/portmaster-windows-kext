@@ -26,10 +26,10 @@
  * Global (static) data structures
  ******************************************************************/
 static verdict_cache_t* verdictCacheV4;
-static KSPIN_LOCK verdictCacheV4Lock;
+static EX_SPIN_LOCK verdictCacheV4Lock = 0;
 
 static verdict_cache_t* verdictCacheV6;
-static KSPIN_LOCK verdictCacheV6Lock;
+static EX_SPIN_LOCK verdictCacheV6Lock = 0;
 
 packet_cache_t* packetCache;    //Not static anymore, because it is also used in pm_kernel.c
 KSPIN_LOCK packetCacheLock;
@@ -52,13 +52,11 @@ NTSTATUS initCalloutStructure() {
     if (rc != 0) {
         return STATUS_INTERNAL_ERROR;
     }
-    KeInitializeSpinLock(&verdictCacheV4Lock);
 
     rc = create_verdict_cache(PM_VERDICT_CACHE_SIZE, &verdictCacheV6);
     if (rc != 0) {
         return STATUS_INTERNAL_ERROR;
     }
-    KeInitializeSpinLock(&verdictCacheV6Lock);
 
     rc = create_packet_cache(PM_PACKET_CACHE_SIZE, &packetCache);
     if (rc != 0) {
@@ -670,7 +668,7 @@ void copy_and_inject(portmaster_packet_info* packetInfo, PNET_BUFFER nb, UINT32 
 FWP_ACTION_TYPE classifySingle(
     portmaster_packet_info* packetInfo,
     verdict_cache_t* verdictCache,
-    KSPIN_LOCK* verdictCacheLock,
+    PEX_SPIN_LOCK verdictCacheLock,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     PNET_BUFFER nb,
     UINT32 ipHeaderSize
@@ -678,7 +676,8 @@ FWP_ACTION_TYPE classifySingle(
     int offset;
     verdict_t verdict;
     int rc;
-    KLOCK_QUEUE_HANDLE lock_handle_vc, lock_handle_pc;
+    KIRQl irql;
+    KLOCK_QUEUE_HANDLE lock_handle;
     pportmaster_packet_info copiedPacketInfo, redirInfo;
     PPM_IPHDR ip_header;
     UINT16 srcPort, dstPort;
@@ -801,8 +800,8 @@ FWP_ACTION_TYPE classifySingle(
     // Set default verdict.
     verdict = PORTMASTER_VERDICT_GET;
 
-    // Lock to check verdict cache.
-    KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lock_handle_vc);
+    // Acquire shared lock, as we are just reading the verdict cache.
+    irql = ExAcquireSpinLockShared(verdictCacheLock);
 
     // First check if the packet is a DNAT response.
     if (packetInfo->direction == 1 &&
@@ -825,7 +824,8 @@ FWP_ACTION_TYPE classifySingle(
             redirInfo = packetInfo;
         }
     }
-    KeReleaseInStackQueuedSpinLock(&lock_handle_vc);
+
+    ExReleaseSpinLockShared(verdictCacheLock, irql);
 
     switch (verdict) {
         case PORTMASTER_VERDICT_DROP:
@@ -1012,7 +1012,7 @@ FWP_ACTION_TYPE classifySingle(
 void classifyMultiple(
     portmaster_packet_info* packetInfo,
     verdict_cache_t* verdictCache,
-    KSPIN_LOCK* verdictCacheLock,
+    PEX_SPIN_LOCK verdictCacheLock,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
     FWPS_CLASSIFY_OUT* classifyOut
