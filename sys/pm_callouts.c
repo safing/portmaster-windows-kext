@@ -348,7 +348,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
                     udp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
                 }
 
-            } else {  //Neither UDP nor TCP -> We can only redirect UDP or TCP -> drop the rest
+            } else {  // Neither UDP nor TCP -> We can only redirect UDP or TCP -> drop the rest
                 portmaster_free(packet);
                 WARN("Portmaster issued redirect for Non UDP or TCP Packet:");
                 WARN("%s", print_packet_info(packetInfo));
@@ -406,6 +406,72 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
     }
 
     return;
+}
+
+void send_tcp_rst(portmaster_packet_info* packetInfo, void* packet) {
+    if(packetInfo->protocol != PROTOCOL_TCP) {
+        return;
+    }
+    //, void* packet, size_t packet_len
+
+    if(packetInfo->ipV6) {
+        // TODO implement for IPv6
+    } else {
+        PNET_BUFFER_LIST inject_nbl;
+        NTSTATUS status;
+        UINT16 packet_len = sizeof(IPV4_HEADER) + sizeof(TCP_HEADER);
+        void *tcpResetPacket = portmaster_malloc(packet_len, FALSE);
+        // HANDLE injectContext = NULL;
+        HANDLE handle = getInjectionHandle(packetInfo);
+
+        PIPV4_HEADER ipHeader = (PIPV4_HEADER) tcpResetPacket;
+        PTCP_HEADER originalTcpHeader = (PTCP_HEADER) ((UINT8*)packet + sizeof(IPV4_HEADER));
+        PTCP_HEADER tcpHeader = (PTCP_HEADER) ((UINT8*)tcpResetPacket + sizeof(IPV4_HEADER));
+        
+        ipHeader->HdrLength = sizeof(IPV4_HEADER) / 4;
+        ipHeader->Version = 4;
+        ipHeader->TOS = 0;
+        ipHeader->Length = RtlUshortByteSwap(packet_len);
+        ipHeader->Id = 0;
+        ipHeader->Protocol = packetInfo->protocol;
+        ipHeader->TTL = 128;
+        ipHeader->DstAddr = RtlUlongByteSwap(packetInfo->localIP[0]);
+        ipHeader->SrcAddr = RtlUlongByteSwap(packetInfo->remoteIP[0]);
+
+        INFO("srcPort: %d, DstPort: %d", packetInfo->remotePort, packetInfo->localPort);
+        tcpHeader->SrcPort = RtlUshortByteSwap(packetInfo->remotePort);
+        tcpHeader->DstPort = RtlUshortByteSwap(packetInfo->localPort);
+        tcpHeader->HdrLength = sizeof(TCP_HEADER) / 4;
+        tcpHeader->SeqNum = 0;
+        tcpHeader->AckNum = originalTcpHeader->SeqNum + 1;
+        tcpHeader->Ack = 1;
+        tcpHeader->Rst = 1;
+
+        calc_ipv4_checksum(tcpResetPacket, packet_len, TRUE);
+
+        // inject ...
+        status = wrap_packet_data_in_nb(tcpResetPacket, packet_len, &inject_nbl);
+        if (!NT_SUCCESS(status)) {
+            ERR("send_tcp_rst > wrap_packet_data_in_nb failed: %u", status);
+            portmaster_free(tcpResetPacket);
+            return;
+        }
+        
+        status = FwpsInjectNetworkReceiveAsync(inject_in4_handle, NULL, 0, UNSPECIFIED_COMPARTMENT_ID, 
+                packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
+                inject_nbl, free_after_inject,
+                tcpResetPacket);
+
+
+        // status = FwpsInjectNetworkSendAsync(inject_out4_handle, NULL, 0, UNSPECIFIED_COMPARTMENT_ID, inject_nbl, free_after_inject, tcpResetPacket);
+
+        INFO("send_tcp_rst > FwpsStreamInjectAsync executed: %s", print_packet_info(packetInfo));
+        if (!NT_SUCCESS(status)) {
+            ERR("send_tcp_rst > FwpsStreamInjectAsync 0x%x", status);
+            free_after_inject(tcpResetPacket, inject_nbl, FALSE);
+        }
+    }
+
 }
 
 static void free_after_inject(VOID *context, NET_BUFFER_LIST *nbl, BOOLEAN dispatch_level) {
@@ -525,11 +591,12 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
         case PORTMASTER_VERDICT_BLOCK:
             // TODO: respond with block
             INFO("PORTMASTER_VERDICT_BLOCK: %s", print_packet_info(packetInfo));
+            // send_tcp_rst(packetInfo, packet, packet_len);
             portmaster_free(packet);
             return;
         case PORTMASTER_VERDICT_ACCEPT:
             DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", print_packet_info(packetInfo));
-            break;
+            break; // ACCEPT
         case PORTMASTER_VERDICT_REDIR_DNS:
             INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", print_packet_info(packetInfo));
             redir(packetInfo, packetInfo, packet, packet_len, TRUE);
