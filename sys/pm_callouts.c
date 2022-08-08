@@ -417,11 +417,11 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
     if(packetInfo->ipV6) {
         // Initialize header for the original packet with SYN flag
         ULONG originalIPHeaderLength = calc_ipv6_header_size(originalPacket, originalPacketLength, NULL);
-        PIPV6_HEADER originalIpHeader = (PIPV6_HEADER) originalPacket;
-        PTCP_HEADER originalTcpHeader = (PTCP_HEADER) ((UINT8*)originalPacket + originalIPHeaderLength);
+        PIPV6_HEADER originalIPHeader = (PIPV6_HEADER) originalPacket;
+        PTCP_HEADER originalTCPHeader = (PTCP_HEADER) ((UINT8*)originalPacket + originalIPHeaderLength);
 
         // Initialize variables
-        PNET_BUFFER_LIST inject_nbl;
+        PNET_BUFFER_LIST injectNBL;
         NTSTATUS status;
         UINT16 packetLength = sizeof(IPV6_HEADER) + sizeof(TCP_HEADER);
         void *tcpResetPacket;
@@ -437,8 +437,8 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         ipHeader->Length = sizeof(TCP_HEADER);
         ipHeader->NextHdr = 6;
         ipHeader->HopLimit = 128;
-        RtlCopyMemory(ipHeader->DstAddr, originalIpHeader->SrcAddr, sizeof(originalIpHeader->SrcAddr)); // Source becomes destination
-        RtlCopyMemory(ipHeader->SrcAddr, originalIpHeader->DstAddr, sizeof(originalIpHeader->DstAddr)); // Destination becomes source
+        RtlCopyMemory(ipHeader->DstAddr, originalIPHeader->SrcAddr, sizeof(originalIPHeader->SrcAddr)); // Source becomes destination
+        RtlCopyMemory(ipHeader->SrcAddr, originalIPHeader->DstAddr, sizeof(originalIPHeader->DstAddr)); // Destination becomes source
 
         // Initialize TCP header
         tcpHeader = (PTCP_HEADER) ((UINT8*)tcpResetPacket + sizeof(IPV6_HEADER));
@@ -447,14 +447,14 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         tcpHeader->HdrLength = sizeof(TCP_HEADER) / 4;
         tcpHeader->SeqNum = 0;
         // We should acknowledge the SYN packet while doing the reset
-        tcpHeader->AckNum = RtlUlongByteSwap(RtlUlongByteSwap(originalTcpHeader->SeqNum) + 1);
+        tcpHeader->AckNum = RtlUlongByteSwap(RtlUlongByteSwap(originalTCPHeader->SeqNum) + 1);
         tcpHeader->Ack = 1;
         tcpHeader->Rst = 1;
 
         calc_ipv6_checksum(tcpResetPacket, packetLength, TRUE);
 
         // Create the net buffer list for the new RST packet
-        status = wrap_packet_data_in_nb(tcpResetPacket, packetLength, &inject_nbl);
+        status = wrap_packet_data_in_nb(tcpResetPacket, packetLength, &injectNBL);
         if (!NT_SUCCESS(status)) {
             ERR("send_tcp_rst ipv6 -> wrap_packet_data_in_nb failed: %u", status);
             portmaster_free(tcpResetPacket);
@@ -465,30 +465,30 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         if(is_ipv6_loopback(packetInfo->remoteIP)) {
             // InjectNetworkReceive does not work for loopback packet but send works!?
             status = FwpsInjectNetworkSendAsync(inject_out6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
-                    inject_nbl, free_after_inject,
+                    injectNBL, free_after_inject,
                     tcpResetPacket);
         } else {
             // Inject the packet
             status = FwpsInjectNetworkReceiveAsync(inject_in6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
                     packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
-                    inject_nbl, free_after_inject,
+                    injectNBL, free_after_inject,
                     tcpResetPacket);
         }
 
         if (!NT_SUCCESS(status)) {
             ERR("Failed to inject IPv6/TCP RST packet: 0x%x", status);
-            free_after_inject(tcpResetPacket, inject_nbl, FALSE);
+            free_after_inject(tcpResetPacket, injectNBL, FALSE);
         }  else {
             INFO("IPv6/TCP RST packet was send as a response to: %s", print_packet_info(packetInfo));
         }
     } else {
         // Initialize header for the original packet with SYN flag
         ULONG originalIPHeaderLength = calc_ipv4_header_size(originalPacket, originalPacketLength);
-        PIPV4_HEADER originalIpHeader = (PIPV4_HEADER) originalPacket;
-        PTCP_HEADER originalTcpHeader = (PTCP_HEADER) ((UINT8*)originalPacket + originalIPHeaderLength);
+        PIPV4_HEADER originalIPHeader = (PIPV4_HEADER) originalPacket;
+        PTCP_HEADER originalTCPHeader = (PTCP_HEADER) ((UINT8*)originalPacket + originalIPHeaderLength);
         
         // Initialize variables
-        PNET_BUFFER_LIST inject_nbl;
+        PNET_BUFFER_LIST injectNBL;
         NTSTATUS status;
         UINT16 packetLength = sizeof(IPV4_HEADER) + sizeof(TCP_HEADER);
         void *tcpResetPacket;
@@ -507,24 +507,24 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         ipHeader->Id = 0;
         ipHeader->Protocol = packetInfo->protocol;
         ipHeader->TTL = 128;
-        ipHeader->DstAddr = originalIpHeader->SrcAddr; // Source becomes destination
-        ipHeader->SrcAddr = originalIpHeader->DstAddr; // Destination becomes source
+        ipHeader->DstAddr = originalIPHeader->SrcAddr; // Source becomes destination
+        ipHeader->SrcAddr = originalIPHeader->DstAddr; // Destination becomes source
 
          // Initialize TCP header
         tcpHeader = (PTCP_HEADER) ((UINT8*)tcpResetPacket + sizeof(IPV4_HEADER));
-        tcpHeader->SrcPort = originalTcpHeader->DstPort; // Source becomes destination
-        tcpHeader->DstPort = originalTcpHeader->SrcPort; // Destination becomes source
+        tcpHeader->SrcPort = originalTCPHeader->DstPort; // Source becomes destination
+        tcpHeader->DstPort = originalTCPHeader->SrcPort; // Destination becomes source
         tcpHeader->HdrLength = sizeof(TCP_HEADER) / 4;
         tcpHeader->SeqNum = 0;
         // We should acknowledge the SYN packet while doing the reset
-        tcpHeader->AckNum = RtlUlongByteSwap(RtlUlongByteSwap(originalTcpHeader->SeqNum) + 1);
+        tcpHeader->AckNum = RtlUlongByteSwap(RtlUlongByteSwap(originalTCPHeader->SeqNum) + 1);
         tcpHeader->Ack = 1;
         tcpHeader->Rst = 1;
 
         calc_ipv4_checksum(tcpResetPacket, packetLength, TRUE);
 
         // Create the net buffer list for the new RST packet
-        status = wrap_packet_data_in_nb(tcpResetPacket, packetLength, &inject_nbl);
+        status = wrap_packet_data_in_nb(tcpResetPacket, packetLength, &injectNBL);
         if (!NT_SUCCESS(status)) {
             ERR("send_tcp_rst ipv4 -> wrap_packet_data_in_nb failed: %u", status);
             portmaster_free(tcpResetPacket);
@@ -535,20 +535,20 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         if(is_ipv4_loopback(packetInfo->remoteIP[0])) {
             // InjectNetworkReceive does not work for loopback packet but send works!?
             status = FwpsInjectNetworkSendAsync(inject_out4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
-                    inject_nbl, free_after_inject,
+                    injectNBL, free_after_inject,
                     tcpResetPacket);
 
         } else {
             // Inject the packet
             status = FwpsInjectNetworkReceiveAsync(inject_in4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
                     packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
-                    inject_nbl, free_after_inject,
+                    injectNBL, free_after_inject,
                     tcpResetPacket);
         }
 
         if (!NT_SUCCESS(status)) {
             ERR("Failed to inject IPv4/TCP RST packet: 0x%x", status);
-            free_after_inject(tcpResetPacket, inject_nbl, FALSE);
+            free_after_inject(tcpResetPacket, injectNBL, FALSE);
         }  else {
             INFO("IPv4/TCP RST packet was send as a response to: %s", print_packet_info(packetInfo));
         }
