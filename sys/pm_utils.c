@@ -37,3 +37,14 @@ VOID portmaster_free(PVOID ptr) {
         ExFreePoolWithTag(ptr, PORTMASTER_TAG);
     }
 }
+
+BOOL is_ipv4_loopback(UINT32 addr) {
+    return (addr & IPv4_LOCALHOST_NET_MASK) == IPv4_LOCALHOST_NET;
+}
+
+BOOL is_ipv6_loopback(UINT32 *addr) {
+    return addr[0] == 0 &&
+           addr[1] == 0 &&
+           addr[2] == 0 &&
+           addr[3] == IPv6_LOCALHOST_PART4;
+}

@@ -49,6 +49,24 @@ extern int compare_reverse_redir_packet_info(portmaster_packet_info* original, p
  */
 extern int compare_remote_packet_info(portmaster_packet_info* a, portmaster_packet_info* b);
 
+/**
+ * @brief Checks if the IPv4 address is a loopback address
+ *
+ * @par    addr = IPv4 address
+ * @return is loopback (bool)
+ *
+ */
+BOOL is_ipv4_loopback(UINT32 addr);
+
+/**
+ * @brief Checks if the IPv6 address is a loopback address
+ *
+ * @par    addr = IPv6 address (the size of the array needs to be no less then 4)
+ * @return is loopback (bool)
+ *
+ */
+BOOL is_ipv6_loopback(UINT32 *addr);
+
 #endif
 
 #ifndef DYN_ALLOC_FREE
