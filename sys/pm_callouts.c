@@ -411,7 +411,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
 void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULONG originalPacketLength) {
     // Only TCP is supported
     if(packetInfo->protocol != 6) {
-        return;
+        return; // Not TCP
     }
 
     if(packetInfo->ipV6) {
@@ -435,7 +435,7 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         ipHeader = (PIPV6_HEADER) tcpResetPacket;
         ipHeader->Version = 6;
         ipHeader->Length = sizeof(TCP_HEADER);
-        ipHeader->NextHdr = 6;
+        ipHeader->NextHdr = packetInfo->protocol; // 6 -> TCP
         ipHeader->HopLimit = 128;
         RtlCopyMemory(ipHeader->DstAddr, originalIPHeader->SrcAddr, sizeof(originalIPHeader->SrcAddr)); // Source becomes destination
         RtlCopyMemory(ipHeader->SrcAddr, originalIPHeader->DstAddr, sizeof(originalIPHeader->DstAddr)); // Destination becomes source
@@ -461,14 +461,14 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
             return;
         }
 
-        // loopback needs special treatment
-        if(is_ipv6_loopback(packetInfo->remoteIP)) {
+        // For inbound we need to send the rst packet. For the loopback is always send
+        if(packetInfo->direction == 1 || is_ipv6_loopback(packetInfo->remoteIP)) {
             // InjectNetworkReceive does not work for loopback packet but send works!?
             status = FwpsInjectNetworkSendAsync(inject_out6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
                     injectNBL, free_after_inject,
                     tcpResetPacket);
         } else {
-            // Inject the packet
+            // For outbound we need to receive the rst packet.
             status = FwpsInjectNetworkReceiveAsync(inject_in6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
                     packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
                     injectNBL, free_after_inject,
@@ -505,7 +505,7 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         ipHeader->TOS = 0;
         ipHeader->Length = RtlUshortByteSwap(packetLength);
         ipHeader->Id = 0;
-        ipHeader->Protocol = packetInfo->protocol;
+        ipHeader->Protocol = packetInfo->protocol;  // 6 -> TCP
         ipHeader->TTL = 128;
         ipHeader->DstAddr = originalIPHeader->SrcAddr; // Source becomes destination
         ipHeader->SrcAddr = originalIPHeader->DstAddr; // Destination becomes source
@@ -531,15 +531,15 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
             return;
         }
 
-        // loopback needs special treatment
-        if(is_ipv4_loopback(packetInfo->remoteIP[0])) {
+        // For inbound we need to send the rst packet. For the loopback is always send
+        if(packetInfo->direction == 1 || is_ipv4_loopback(packetInfo->remoteIP[0])) {
             // InjectNetworkReceive does not work for loopback packet but send works!?
             status = FwpsInjectNetworkSendAsync(inject_out4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
                     injectNBL, free_after_inject,
                     tcpResetPacket);
 
         } else {
-            // Inject the packet
+            // For outbound we need to receive the rst packet.
             status = FwpsInjectNetworkReceiveAsync(inject_in4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
                     packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
                     injectNBL, free_after_inject,
