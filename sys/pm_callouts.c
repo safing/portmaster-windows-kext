@@ -348,7 +348,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
                     udp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
                 }
 
-            } else {  //Neither UDP nor TCP -> We can only redirect UDP or TCP -> drop the rest
+            } else {  // Neither UDP nor TCP -> We can only redirect UDP or TCP -> drop the rest
                 portmaster_free(packet);
                 WARN("Portmaster issued redirect for Non UDP or TCP Packet:");
                 WARN("%s", print_packet_info(packetInfo));
@@ -406,6 +406,191 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
     }
 
     return;
+}
+
+void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULONG originalPacketLength) {
+    // Only TCP is supported
+    if(packetInfo->protocol != 6) {
+        return; // Not TCP
+    }
+
+    if(packetInfo->ipV6) {
+        // Initialize header for the original packet with SYN flag
+        ULONG originalIPHeaderLength = calc_ipv6_header_size(originalPacket, originalPacketLength, NULL);
+        PIPV6_HEADER originalIPHeader = (PIPV6_HEADER) originalPacket;
+        PTCP_HEADER originalTCPHeader = (PTCP_HEADER) ((UINT8*)originalPacket + originalIPHeaderLength);
+
+        // Initialize variables
+        PNET_BUFFER_LIST injectNBL;
+        NTSTATUS status;
+        UINT16 packetLength = sizeof(IPV6_HEADER) + sizeof(TCP_HEADER);
+        void *tcpResetPacket;
+        PIPV6_HEADER ipHeader;
+        PTCP_HEADER tcpHeader;
+
+        // allocate memory for the reset packet
+        tcpResetPacket = portmaster_malloc(packetLength, FALSE);
+
+        // initialize IPv6 header
+        ipHeader = (PIPV6_HEADER) tcpResetPacket;
+        ipHeader->Version = 6;
+        ipHeader->Length = sizeof(TCP_HEADER);
+        ipHeader->NextHdr = packetInfo->protocol; // 6 -> TCP
+        ipHeader->HopLimit = 128;
+        RtlCopyMemory(ipHeader->DstAddr, originalIPHeader->SrcAddr, sizeof(originalIPHeader->SrcAddr)); // Source becomes destination
+        RtlCopyMemory(ipHeader->SrcAddr, originalIPHeader->DstAddr, sizeof(originalIPHeader->DstAddr)); // Destination becomes source
+
+        // Initialize TCP header
+        tcpHeader = (PTCP_HEADER) ((UINT8*)tcpResetPacket + sizeof(IPV6_HEADER));
+        tcpHeader->SrcPort = RtlUshortByteSwap(packetInfo->remotePort); // Source becomes destination
+        tcpHeader->DstPort = RtlUshortByteSwap(packetInfo->localPort); // Destination becomes source
+        tcpHeader->HdrLength = sizeof(TCP_HEADER) / 4;
+        tcpHeader->SeqNum = 0;
+        // We should acknowledge the SYN packet while doing the reset
+        tcpHeader->AckNum = RtlUlongByteSwap(RtlUlongByteSwap(originalTCPHeader->SeqNum) + 1);
+        tcpHeader->Ack = 1;
+        tcpHeader->Rst = 1;
+
+        calc_ipv6_checksum(tcpResetPacket, packetLength, TRUE);
+
+        // Create the net buffer list for the new RST packet
+        status = wrap_packet_data_in_nb(tcpResetPacket, packetLength, &injectNBL);
+        if (!NT_SUCCESS(status)) {
+            ERR("send_tcp_rst ipv6 -> wrap_packet_data_in_nb failed: %u", status);
+            portmaster_free(tcpResetPacket);
+            return;
+        }
+
+        // For inbound we need to send the rst packet. For the loopback is always send
+        if(packetInfo->direction == 1 || is_ipv6_loopback(packetInfo->remoteIP)) {
+            // InjectNetworkReceive does not work for loopback packet but send works!?
+            status = FwpsInjectNetworkSendAsync(inject_out6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
+                    injectNBL, free_after_inject,
+                    tcpResetPacket);
+        } else {
+            // For outbound we need to receive the rst packet.
+            status = FwpsInjectNetworkReceiveAsync(inject_in6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
+                    packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
+                    injectNBL, free_after_inject,
+                    tcpResetPacket);
+        }
+
+        if (!NT_SUCCESS(status)) {
+            ERR("Failed to inject IPv6/TCP RST packet: 0x%x", status);
+            free_after_inject(tcpResetPacket, injectNBL, FALSE);
+        }  else {
+            INFO("IPv6/TCP RST packet was send as a response to: %s", print_packet_info(packetInfo));
+        }
+    } else {
+        // Initialize header for the original packet with SYN flag
+        ULONG originalIPHeaderLength = calc_ipv4_header_size(originalPacket, originalPacketLength);
+        PIPV4_HEADER originalIPHeader = (PIPV4_HEADER) originalPacket;
+        PTCP_HEADER originalTCPHeader = (PTCP_HEADER) ((UINT8*)originalPacket + originalIPHeaderLength);
+        
+        // Initialize variables
+        PNET_BUFFER_LIST injectNBL;
+        NTSTATUS status;
+        UINT16 packetLength = sizeof(IPV4_HEADER) + sizeof(TCP_HEADER);
+        void *tcpResetPacket;
+        PIPV4_HEADER ipHeader;
+        PTCP_HEADER tcpHeader;
+
+        // allocate memory for the reset packet
+        tcpResetPacket = portmaster_malloc(packetLength, FALSE);
+
+        // initialize IPv4 header
+        ipHeader = (PIPV4_HEADER) tcpResetPacket;        
+        ipHeader->HdrLength = sizeof(IPV4_HEADER) / 4;
+        ipHeader->Version = 4;
+        ipHeader->TOS = 0;
+        ipHeader->Length = RtlUshortByteSwap(packetLength);
+        ipHeader->Id = 0;
+        ipHeader->Protocol = packetInfo->protocol;  // 6 -> TCP
+        ipHeader->TTL = 128;
+        ipHeader->DstAddr = originalIPHeader->SrcAddr; // Source becomes destination
+        ipHeader->SrcAddr = originalIPHeader->DstAddr; // Destination becomes source
+
+         // Initialize TCP header
+        tcpHeader = (PTCP_HEADER) ((UINT8*)tcpResetPacket + sizeof(IPV4_HEADER));
+        tcpHeader->SrcPort = originalTCPHeader->DstPort; // Source becomes destination
+        tcpHeader->DstPort = originalTCPHeader->SrcPort; // Destination becomes source
+        tcpHeader->HdrLength = sizeof(TCP_HEADER) / 4;
+        tcpHeader->SeqNum = 0;
+        // We should acknowledge the SYN packet while doing the reset
+        tcpHeader->AckNum = RtlUlongByteSwap(RtlUlongByteSwap(originalTCPHeader->SeqNum) + 1);
+        tcpHeader->Ack = 1;
+        tcpHeader->Rst = 1;
+
+        calc_ipv4_checksum(tcpResetPacket, packetLength, TRUE);
+
+        // Create the net buffer list for the new RST packet
+        status = wrap_packet_data_in_nb(tcpResetPacket, packetLength, &injectNBL);
+        if (!NT_SUCCESS(status)) {
+            ERR("send_tcp_rst ipv4 -> wrap_packet_data_in_nb failed: %u", status);
+            portmaster_free(tcpResetPacket);
+            return;
+        }
+
+        // For inbound we need to send the rst packet. For the loopback is always send
+        if(packetInfo->direction == 1 || is_ipv4_loopback(packetInfo->remoteIP[0])) {
+            // InjectNetworkReceive does not work for loopback packet but send works!?
+            status = FwpsInjectNetworkSendAsync(inject_out4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
+                    injectNBL, free_after_inject,
+                    tcpResetPacket);
+
+        } else {
+            // For outbound we need to receive the rst packet.
+            status = FwpsInjectNetworkReceiveAsync(inject_in4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
+                    packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
+                    injectNBL, free_after_inject,
+                    tcpResetPacket);
+        }
+
+        if (!NT_SUCCESS(status)) {
+            ERR("Failed to inject IPv4/TCP RST packet: 0x%x", status);
+            free_after_inject(tcpResetPacket, injectNBL, FALSE);
+        }  else {
+            INFO("IPv4/TCP RST packet was send as a response to: %s", print_packet_info(packetInfo));
+        }
+    }
+}
+
+void send_tcp_rst_from_callout(portmaster_packet_info* packetInfo, PNET_BUFFER nb, size_t ipHeaderSize) {
+    void* packet;
+    ULONG packetLength;
+    NTSTATUS status;
+
+ 
+    if (!packetInfo || !nb || ipHeaderSize == 0) {
+        ERR("Invalid parameters");
+        return;
+    }
+
+    // Inbound traffic requires special treatment - dafuq?
+    if (packetInfo->direction == 1) {   //Inbound
+        status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
+        if (!NT_SUCCESS(status)) {
+            ERR("failed to retreat net buffer data start");
+            return;
+        }
+    }
+
+    // Create new Packet -> wrap it in new nb, so we don't need to shift this nb back.
+    status = copy_packet_data_from_nb(nb, 0, &packet, &packetLength);
+    if (!NT_SUCCESS(status)) {
+        ERR("copy_packet_data_from_nb 3: %d", status);
+        return;
+    }
+    // Now data should contain a full blown packet
+
+    // In order to be as clean as possible, we shift back nb, even though it may not be necessary.
+    if (packetInfo->direction == 1) {   //Inbound
+        NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
+    }
+
+    // Now we can send the RST packet
+    send_tcp_rst(packetInfo, packet, packetLength);
+    portmaster_free(packet);
 }
 
 static void free_after_inject(VOID *context, NET_BUFFER_LIST *nbl, BOOLEAN dispatch_level) {
@@ -525,11 +710,12 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
         case PORTMASTER_VERDICT_BLOCK:
             // TODO: respond with block
             INFO("PORTMASTER_VERDICT_BLOCK: %s", print_packet_info(packetInfo));
+            send_tcp_rst(packetInfo, packet, packet_len);
             portmaster_free(packet);
             return;
         case PORTMASTER_VERDICT_ACCEPT:
             DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", print_packet_info(packetInfo));
-            break;
+            break; // ACCEPT
         case PORTMASTER_VERDICT_REDIR_DNS:
             INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", print_packet_info(packetInfo));
             redir(packetInfo, packetInfo, packet, packet_len, TRUE);
@@ -834,6 +1020,7 @@ FWP_ACTION_TYPE classifySingle(
 
         case PORTMASTER_VERDICT_BLOCK:
             INFO("PORTMASTER_VERDICT_BLOCK: %s", print_packet_info(packetInfo));
+            send_tcp_rst_from_callout(packetInfo, nb, ipHeaderSize);
             return FWP_ACTION_BLOCK;
 
         case PORTMASTER_VERDICT_ACCEPT:
