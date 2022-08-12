@@ -1530,7 +1530,7 @@ void classifyInboundIPv6(
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
     }
-
+    
     inboundV6PacketInfo.direction = 1;
     inboundV6PacketInfo.ipV6 = 1;
 
@@ -1617,4 +1617,24 @@ void classifyOutboundIPv6(
     }
     classifyMultiple(&outboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
     return;
+}
+
+void clearCache() {
+    KLOCK_QUEUE_HANDLE lock_handle;
+    INFO("Cleaning all cache");
+
+    // Clear IPv4 verdict cache
+    KeAcquireInStackQueuedSpinLock(&verdictCacheV4Lock, &lock_handle);
+    clear_all_entries_from_verdict_cache(verdictCacheV4);
+    KeReleaseInStackQueuedSpinLock(&lock_handle);
+
+    // Clear IPv6 verdict cache
+    KeAcquireInStackQueuedSpinLock(&verdictCacheV6Lock, &lock_handle);
+    clear_all_entries_from_verdict_cache(verdictCacheV6);
+    KeReleaseInStackQueuedSpinLock(&lock_handle);
+
+    // Clear packet cache
+    KeAcquireInStackQueuedSpinLock(&packetCacheLock, &lock_handle);
+    clear_all_entries_from_packet_cache(packetCache);
+    KeReleaseInStackQueuedSpinLock(&lock_handle);
 }

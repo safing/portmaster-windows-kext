@@ -44,6 +44,7 @@ typedef struct verdict_cache {
  */
 extern int create_verdict_cache(UINT32 max_size, verdict_cache_t** verdict_cache);
 
+
 /**
  * @brief Cleans the verdict cache
  *
@@ -53,6 +54,14 @@ extern int create_verdict_cache(UINT32 max_size, verdict_cache_t** verdict_cache
  *
  */
 extern int clean_verdict_cache(verdict_cache_t* verdict_cache, portmaster_packet_info** packet_info);
+
+/**
+ * @brief Remove all items from verdict cache
+ *
+ * @par    verdict_cache = verdict_cache to use
+ *
+ */
+void clear_all_entries_from_verdict_cache(verdict_cache_t* verdict_cache);
 
 /**
  * @brief Tears down the verdict cache

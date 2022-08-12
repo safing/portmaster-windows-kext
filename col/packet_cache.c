@@ -230,3 +230,16 @@ int get_packet(packet_cache_t* packet_cache, uint32_t packet_id, void** packet, 
     }
     return 1;
 }
+
+void clear_all_entries_from_packet_cache(packet_cache_t* packet_cache) {
+    packet_cache_item_t *item = packet_cache->head;
+    while(item != NULL) {
+        packet_cache_item_t *next = item->next;
+        _FREE(item);
+        item = next;
+    }
+    packet_cache->size = 0;
+    packet_cache->head = NULL;
+    packet_cache->tail = NULL;
+    packet_cache->next_packet_id = 1;
+}

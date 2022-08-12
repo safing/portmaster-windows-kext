@@ -101,6 +101,14 @@ extern _EXPORT int PortmasterSetVerdict(__in UINT32 packet_id, __in verdict_t ve
  */
 extern _EXPORT UINT32 PortmasterGetPayload(__in UINT32 packet_id, __out UINT8* buf, __inout UINT32* len);
 
+/*
+ * Get Reset connection cache
+ *
+ * returns: ERROR_SUCCESS:             SUCCESS
+            any GetLastError():        in case of unsuccessful communication with kernel (DeviceIoControl)
+ */
+extern _EXPORT int PortmasterClearCache();
+
 #ifdef __cplusplus
 }
 #endif

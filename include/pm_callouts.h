@@ -104,5 +104,7 @@ extern void redir(pportmaster_packet_info packet_info, pportmaster_packet_info r
 //extern void redir(FWPS_CLASSIFY_OUT* classifyOut, pportmaster_packet_info packet_info, PNET_BUFFER nb, BOOL dns);
 extern  NTSTATUS genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext);
 extern void destroyCalloutStructure();
+void clearCache();
+
 
 #endif // include guard

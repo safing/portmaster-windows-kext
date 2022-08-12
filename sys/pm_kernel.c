@@ -463,7 +463,12 @@ IOCTL_GET_PAYLOAD_EXIT:
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return rc;
         }
-
+        case IOCTL_CLEAR_CACHE: {
+            clearCache();
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            IoCompleteRequest(Irp,IO_NO_INCREMENT);
+            return STATUS_SUCCESS;
+        }
         default: {
             ERR("Don't know how to deal with IoControlCode 0x%x", IoControlCode);
             Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;

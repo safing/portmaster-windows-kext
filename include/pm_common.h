@@ -196,8 +196,10 @@ typedef struct {
     CTL_CODE(SIOCTL_TYPE, 0x803, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
 
 #define IOCTL_GET_PAYLOAD \
-CTL_CODE(SIOCTL_TYPE, 0x804, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
+    CTL_CODE(SIOCTL_TYPE, 0x804, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
 
+#define IOCTL_CLEAR_CACHE \
+    CTL_CODE(SIOCTL_TYPE, 0x805, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
 
 /****************************************************************************/
 /* MISC                                                       */

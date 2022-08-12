@@ -88,6 +88,24 @@ int clean_verdict_cache(verdict_cache_t* verdict_cache, pportmaster_packet_info*
     return 1;
 }
 
+/**
+ * @brief Remove all items from verdict cache
+ *
+ * @par    verdict_cache = verdict_cache to use
+ *
+ */
+void clear_all_entries_from_verdict_cache(verdict_cache_t* verdict_cache) {
+    verdict_cache_item_t *item = verdict_cache->head;
+    while(item != NULL) {
+        verdict_cache_item_t *next = item->next;
+        _FREE(item);
+        item = next;
+    }
+    verdict_cache->size = 0;
+    verdict_cache->head = NULL;
+    verdict_cache->tail = NULL;
+}
+
 
 /**
  * @brief Tears down the verdict cache
@@ -166,7 +184,7 @@ verdict_t check_verdict(verdict_cache_t* verdict_cache, pportmaster_packet_info 
 
     // check first item
     if (compare_full_packet_info(packet_info, verdict_cache->head->packet_info)) {
-        DEBUG("compare_full_packet_info sucessful");
+        DEBUG("compare_full_packet_info successful");
         return verdict_cache->head->verdict;
     }
 
