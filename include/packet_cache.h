@@ -72,6 +72,14 @@ int create_packet_cache(uint32_t max_size, packet_cache_t** packet_cache);
 int clean_packet_cache(packet_cache_t* packet_cache, pportmaster_packet_info * packet_info, void** packet);
 
 /**
+ * @brief Remove all items from packet cache
+ *
+ * @par    packet_cache = packet_cache to use
+ *
+ */
+void clear_all_entries_from_packet_cache(packet_cache_t* packet_cache);
+
+/**
  * @brief Tears down the packet cache
  *
  * @par    packet_cache = packet_cache to use

@@ -186,6 +186,11 @@ extern _EXPORT UINT32 PortmasterGetPayload(UINT32 packet_id, UINT8* buf, UINT32*
     return rc;
 }
 
+extern _EXPORT int PortmasterClearCache() {
+    int rc = 0;
+    rc = DeviceIoControl(handle, IOCTL_CLEAR_CACHE, NULL, 0, NULL, 0, NULL, NULL);
+    return rc;
+}
 
 #ifdef DEBUG_ON
 
