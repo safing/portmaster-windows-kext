@@ -112,6 +112,19 @@ typedef struct {
 } UDP_HEADER, *PUDP_HEADER;
 
 /*
+* ICMP Header (used also for ICMPv6)
+* Note: This header is used only for ICMP type Distinction Unreachable (3). It is not valid for the other message types.
+*/
+typedef struct
+{
+  UINT8  Type;		// message type
+  UINT8  Code;		// type sub-code
+  UINT16 Checksum;
+  UINT32 unused;
+  // This header is not complete for all ICMP packets variants
+}ICMP_HEADER, *PICMP_HEADER;
+
+/*
  * Verdict can be permanent or temporary for one specific packet.
  * If verdict is temporary, portmaster returns negativ value of PORTMASTER_VERDICT_*
  */

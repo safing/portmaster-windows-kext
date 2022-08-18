@@ -377,7 +377,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
         portmaster_free(packet);
         return;
     }
-    handle = getInjectionHandle(packetInfo);    
+    handle = getInjectionHandle(packetInfo);
 
     // Reset routing compartment ID, as we are changing where this is going to.
     // This necessity is unconfirmed.
@@ -408,7 +408,161 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
     return;
 }
 
-void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULONG originalPacketLength) {
+void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* originalPacket, ULONG originalPacketLength, BOOL useLocalHost) {
+    // Only UDP is supported
+    if(packetInfo->protocol != 17) { // 17 -> UDP
+        return; // Not UDP
+    }
+
+    if(packetInfo->ipV6) {
+        // Initialize header for the original UDP packet
+        ULONG originalIPHeaderLength = calc_ipv6_header_size(originalPacket, originalPacketLength, NULL);
+        PIPV6_HEADER originalIPHeader = (PIPV6_HEADER) originalPacket;
+        UINT16 bytesToCopyFromOriginalPacket = (UINT16)originalPacketLength;
+
+        // Initialize variables
+        PNET_BUFFER_LIST injectNBL;
+        NTSTATUS status;
+        UINT16 headerLength = sizeof(IPV6_HEADER) + sizeof(ICMP_HEADER);
+        UINT16 packetLength = headerLength + bytesToCopyFromOriginalPacket;
+
+        void *icmpPacket = portmaster_malloc(packetLength, FALSE);
+        PIPV6_HEADER ipHeader;
+        PICMP_HEADER icmpHeader;
+
+        // Check if the packet exceeds the minimum MTU.
+        // The body of the ICMPv6: As much of invoking packet as possible without the ICMPv6 packet exceeding the minimum IPv6 MTU https://www.rfc-editor.org/rfc/rfc4443#section-3.1
+        // IPv6 requires that every link in the internet have an MTU of 1280 octets or greater https://www.ietf.org/rfc/rfc2460.txt -> 5. Packet Size Issues.
+        if(packetLength > 1280) {
+            bytesToCopyFromOriginalPacket = 1280 - headerLength;
+            packetLength = headerLength + bytesToCopyFromOriginalPacket;
+        }
+
+        // Initialize IPv6 header
+        ipHeader = (PIPV6_HEADER) icmpPacket;
+        ipHeader->Version = 6;
+        ipHeader->Length = sizeof(ICMP_HEADER) + bytesToCopyFromOriginalPacket;
+        ipHeader->NextHdr = 58; // 58 -> ICMPv6
+        ipHeader->HopLimit = 128;
+
+        // Use localhost as source and destination to bypass the windows firewall.
+        if(useLocalHost) {
+            ipHeader->SrcAddr[3] = 0x01000000; // loopback address ::1
+            ipHeader->DstAddr[3] = 0x01000000; // loopback address ::1
+        } else {
+            RtlCopyMemory(ipHeader->SrcAddr, originalIPHeader->DstAddr, sizeof(originalIPHeader->SrcAddr)); // Source becomes destination.
+            RtlCopyMemory(ipHeader->DstAddr, originalIPHeader->SrcAddr, sizeof(originalIPHeader->DstAddr)); // Destination becomes source.
+        }
+
+        icmpHeader = (PICMP_HEADER) ((UINT8*)icmpPacket + sizeof(IPV6_HEADER));
+        icmpHeader->Type = 1; // Destination Unreachable Message.
+        icmpHeader->Code = 4; // Port unreachable (the only code that closes the UDP connection on Windows 10).
+
+        // Calculate checksum for the original packet and copy it in the icmp body.
+        calc_ipv6_checksum(originalPacket, originalPacketLength, TRUE);
+        RtlCopyMemory(((UINT8*)icmpHeader + sizeof(ICMP_HEADER)), originalPacket, bytesToCopyFromOriginalPacket);
+
+        // Calculate checksum for the icmp packet
+        calc_ipv6_checksum(icmpPacket, packetLength, TRUE);
+
+        // Create the net buffer list for the new ICMP packet.
+        status = wrap_packet_data_in_nb(icmpPacket, packetLength, &injectNBL);
+        if (!NT_SUCCESS(status)) {
+            ERR("ICMPv6 Port unreachable -> wrap_packet_data_in_nb failed: 0x%x", status);
+            portmaster_free(icmpPacket);
+            return;
+        }
+
+        if(packetInfo->direction == 1 || is_ipv6_loopback(packetInfo->remoteIP) || useLocalHost) {
+            // InjectNetworkReceive does not work for loopback packet but send works!?
+            status = FwpsInjectNetworkSendAsync(inject_out6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
+                    injectNBL, free_after_inject,
+                    icmpPacket);
+
+        } else {
+            // For outbound we need to receive the icmp packet.
+            status = FwpsInjectNetworkReceiveAsync(inject_in6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
+                    packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
+                    injectNBL, free_after_inject,
+                    icmpPacket);
+        }
+
+    } else {
+        // Initialize header for the original UDP packet
+        ULONG originalIPHeaderLength = calc_ipv4_header_size(originalPacket, originalPacketLength);
+        PIPV4_HEADER originalIPHeader = (PIPV4_HEADER) originalPacket;
+
+        // ICMP body is the original packet IP header + first 64bits (8 bytes) of the body https://www.rfc-editor.org/rfc/rfc792
+        UINT16 bytesToCopyFromOriginalPacket = (UINT16)originalIPHeaderLength + 8;
+
+        // Initialize variables
+        PNET_BUFFER_LIST injectNBL;
+        NTSTATUS status;
+        UINT16 packetLength = sizeof(IPV4_HEADER) + sizeof(ICMP_HEADER) + bytesToCopyFromOriginalPacket;
+        void *icmpPacket = portmaster_malloc(packetLength, FALSE);
+        PIPV4_HEADER ipHeader;
+        PICMP_HEADER icmpHeader;
+
+        // Check if the body is less then 8 bytes
+        if(bytesToCopyFromOriginalPacket < originalPacketLength) {
+            bytesToCopyFromOriginalPacket = (UINT16)originalPacketLength;
+        }
+
+        // Initialize IPv4 header
+        ipHeader = (PIPV4_HEADER) icmpPacket;
+        ipHeader->HdrLength = sizeof(IPV4_HEADER) / 4;
+        ipHeader->Version = 4;
+        ipHeader->TOS = 0;
+        ipHeader->Length = RtlUshortByteSwap(packetLength);
+        ipHeader->Id = 0;
+        ipHeader->Protocol = 1; // ICMP
+        ipHeader->TTL = 128;
+
+        // Use localhost as source and destination to bypass the Windows firewall
+        if(useLocalHost) {
+            ipHeader->SrcAddr = 0x0100007f; // loopback address 127.0.0.1
+            ipHeader->DstAddr = 0x0100007f; // loopback address 127.0.0.1
+        } else {
+            ipHeader->SrcAddr = originalIPHeader->DstAddr; // Source becomes destination
+            ipHeader->DstAddr = originalIPHeader->SrcAddr; // Destination becomes source
+        }
+
+        icmpHeader = (PICMP_HEADER) ((UINT8*)icmpPacket + sizeof(IPV4_HEADER));
+        icmpHeader->Type = 3; // Destination unreachable.
+        icmpHeader->Code = 3; // Destination port unreachable (the only code that closes the UDP connection on Windows 10).
+
+        // Calculate checksum for the original packet and copy it in the icmp body.
+        calc_ipv4_checksum(originalPacket, originalPacketLength, TRUE);
+        RtlCopyMemory(((UINT8*)icmpHeader + sizeof(ICMP_HEADER)), originalPacket, bytesToCopyFromOriginalPacket);
+
+        // Calculate checksum for the icmp packet
+        calc_ipv4_checksum(icmpPacket, packetLength, TRUE);
+
+        // Create the net buffer list for the new ICMP packet
+        status = wrap_packet_data_in_nb(icmpPacket, packetLength, &injectNBL);
+        if (!NT_SUCCESS(status)) {
+            ERR("ICMP Port unreachable -> wrap_packet_data_in_nb failed: 0x%x", status);
+            portmaster_free(icmpPacket);
+            return;
+        }
+
+        if(packetInfo->direction == 1 || is_ipv4_loopback(packetInfo->remoteIP[0]) || useLocalHost) {
+            // InjectNetworkReceive does not work for loopback packet but send works!?
+            status = FwpsInjectNetworkSendAsync(inject_out4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
+                    injectNBL, free_after_inject,
+                    icmpPacket);
+
+        } else {
+            // For outbound we need to receive the rst packet.
+            status = FwpsInjectNetworkReceiveAsync(inject_in4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
+                    packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
+                    injectNBL, free_after_inject,
+                    icmpPacket);
+        }
+    }
+}
+
+void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacket, ULONG originalPacketLength) {
     // Only TCP is supported
     if(packetInfo->protocol != 6) {
         return; // Not TCP
@@ -456,7 +610,7 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         // Create the net buffer list for the new RST packet
         status = wrap_packet_data_in_nb(tcpResetPacket, packetLength, &injectNBL);
         if (!NT_SUCCESS(status)) {
-            ERR("send_tcp_rst ipv6 -> wrap_packet_data_in_nb failed: %u", status);
+            ERR("RST packet ipv6 -> wrap_packet_data_in_nb failed: 0x%x", status);
             portmaster_free(tcpResetPacket);
             return;
         }
@@ -464,12 +618,12 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         // For inbound we need to send the rst packet. For the loopback is always send
         if(packetInfo->direction == 1 || is_ipv6_loopback(packetInfo->remoteIP)) {
             // InjectNetworkReceive does not work for loopback packet but send works!?
-            status = FwpsInjectNetworkSendAsync(inject_out6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
+            status = FwpsInjectNetworkSendAsync(inject_out6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
                     injectNBL, free_after_inject,
                     tcpResetPacket);
         } else {
             // For outbound we need to receive the rst packet.
-            status = FwpsInjectNetworkReceiveAsync(inject_in6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
+            status = FwpsInjectNetworkReceiveAsync(inject_in6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
                     packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
                     injectNBL, free_after_inject,
                     tcpResetPacket);
@@ -486,7 +640,7 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         ULONG originalIPHeaderLength = calc_ipv4_header_size(originalPacket, originalPacketLength);
         PIPV4_HEADER originalIPHeader = (PIPV4_HEADER) originalPacket;
         PTCP_HEADER originalTCPHeader = (PTCP_HEADER) ((UINT8*)originalPacket + originalIPHeaderLength);
-        
+
         // Initialize variables
         PNET_BUFFER_LIST injectNBL;
         NTSTATUS status;
@@ -499,7 +653,7 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         tcpResetPacket = portmaster_malloc(packetLength, FALSE);
 
         // initialize IPv4 header
-        ipHeader = (PIPV4_HEADER) tcpResetPacket;        
+        ipHeader = (PIPV4_HEADER) tcpResetPacket;
         ipHeader->HdrLength = sizeof(IPV4_HEADER) / 4;
         ipHeader->Version = 4;
         ipHeader->TOS = 0;
@@ -526,7 +680,7 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         // Create the net buffer list for the new RST packet
         status = wrap_packet_data_in_nb(tcpResetPacket, packetLength, &injectNBL);
         if (!NT_SUCCESS(status)) {
-            ERR("send_tcp_rst ipv4 -> wrap_packet_data_in_nb failed: %u", status);
+            ERR("RST packet ipv4 -> wrap_packet_data_in_nb failed: 0x%x", status);
             portmaster_free(tcpResetPacket);
             return;
         }
@@ -534,13 +688,13 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
         // For inbound we need to send the rst packet. For the loopback is always send
         if(packetInfo->direction == 1 || is_ipv4_loopback(packetInfo->remoteIP[0])) {
             // InjectNetworkReceive does not work for loopback packet but send works!?
-            status = FwpsInjectNetworkSendAsync(inject_out4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
+            status = FwpsInjectNetworkSendAsync(inject_out4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
                     injectNBL, free_after_inject,
                     tcpResetPacket);
 
         } else {
             // For outbound we need to receive the rst packet.
-            status = FwpsInjectNetworkReceiveAsync(inject_in4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID, 
+            status = FwpsInjectNetworkReceiveAsync(inject_in4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
                     packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
                     injectNBL, free_after_inject,
                     tcpResetPacket);
@@ -555,12 +709,19 @@ void send_tcp_rst(portmaster_packet_info* packetInfo, void* originalPacket, ULON
     }
 }
 
-void send_tcp_rst_from_callout(portmaster_packet_info* packetInfo, PNET_BUFFER nb, size_t ipHeaderSize) {
+void send_block_packet_if_possible(portmaster_packet_info* packetInfo, void* originalPacket, ULONG originalPacketLength) {
+    if(packetInfo->protocol == 6) { // TCP
+        send_tcp_rst_packet(packetInfo, originalPacket, originalPacketLength);
+    } else if(packetInfo->protocol == 17) { // UDP
+        send_icmp_blocked_packet(packetInfo, originalPacket, originalPacketLength, TRUE);
+    }
+}
+
+void send_block_packet_if_possible_from_callout(portmaster_packet_info* packetInfo, PNET_BUFFER nb, size_t ipHeaderSize) {
     void* packet;
     ULONG packetLength;
     NTSTATUS status;
 
- 
     if (!packetInfo || !nb || ipHeaderSize == 0) {
         ERR("Invalid parameters");
         return;
@@ -588,8 +749,8 @@ void send_tcp_rst_from_callout(portmaster_packet_info* packetInfo, PNET_BUFFER n
         NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
     }
 
-    // Now we can send the RST packet
-    send_tcp_rst(packetInfo, packet, packetLength);
+    // Now we can send the RST (for TCP) or ICMP (for UDP) packet
+    send_block_packet_if_possible(packetInfo, packet, packetLength);
     portmaster_free(packet);
 }
 
@@ -708,9 +869,8 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
             portmaster_free(packet);
             return;
         case PORTMASTER_VERDICT_BLOCK:
-            // TODO: respond with block
             INFO("PORTMASTER_VERDICT_BLOCK: %s", print_packet_info(packetInfo));
-            send_tcp_rst(packetInfo, packet, packet_len);
+            send_block_packet_if_possible(packetInfo, packet, packet_len);
             portmaster_free(packet);
             return;
         case PORTMASTER_VERDICT_ACCEPT:
@@ -749,7 +909,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     }
 
     // Get injection handle.
-    handle = getInjectionHandle(packetInfo);    
+    handle = getInjectionHandle(packetInfo);
 
     // Inject packet.
     if (packetInfo->direction == 0) {
@@ -826,7 +986,7 @@ void copy_and_inject(portmaster_packet_info* packetInfo, PNET_BUFFER nb, UINT32 
     }
 
     // Get injection handle.
-    handle = getInjectionHandle(packetInfo);    
+    handle = getInjectionHandle(packetInfo);
 
     // Inject packet.
     if (packetInfo->direction == 0) {
@@ -994,7 +1154,7 @@ FWP_ACTION_TYPE classifySingle(
     if (packetInfo->direction == 1 &&
         (packetInfo->remotePort == PORT_PM_SPN_ENTRY || packetInfo->remotePort == PORT_DNS)) {
         verdict = check_reverse_redir(verdictCache, packetInfo, &redirInfo);
-        
+
         // Verdicts returned by check_reverse_redir must only be
         // PORTMASTER_VERDICT_REDIR_DNS or PORTMASTER_VERDICT_REDIR_TUNNEL.
         if (verdict != PORTMASTER_VERDICT_REDIR_DNS && verdict != PORTMASTER_VERDICT_REDIR_TUNNEL) {
@@ -1005,7 +1165,7 @@ FWP_ACTION_TYPE classifySingle(
     // Check verdict normally if we did not detect a packet that should be reverse DNAT-ed.
     if (verdict == PORTMASTER_VERDICT_GET) {
         verdict = check_verdict(verdictCache, packetInfo);
-        
+
         // If packet should be DNAT-ed set redirInfo to packetInfo.
         if (verdict == PORTMASTER_VERDICT_REDIR_DNS || verdict == PORTMASTER_VERDICT_REDIR_TUNNEL) {
             redirInfo = packetInfo;
@@ -1020,7 +1180,7 @@ FWP_ACTION_TYPE classifySingle(
 
         case PORTMASTER_VERDICT_BLOCK:
             INFO("PORTMASTER_VERDICT_BLOCK: %s", print_packet_info(packetInfo));
-            send_tcp_rst_from_callout(packetInfo, nb, ipHeaderSize);
+            send_block_packet_if_possible_from_callout(packetInfo, nb, ipHeaderSize);
             return FWP_ACTION_BLOCK;
 
         case PORTMASTER_VERDICT_ACCEPT:
@@ -1135,7 +1295,7 @@ FWP_ACTION_TYPE classifySingle(
                 // TODO: free other allocated memory.
                 return FWP_ACTION_NONE;
             }
-        
+
         } else {
             // If not fast-tracked, copy the packet and register it.
 
@@ -1207,10 +1367,10 @@ void classifyMultiple(
 
     /*
      * The classifyFn may receive multiple netbuffer lists (chained), which in turn may each have multiple netbuffers.
-     * 
+     *
      * Multiple netbuffer lists are possible in stream and forward layers.
      * Multiple buffers are possible for outgoing data.
-     * 
+     *
      * Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/packet-indication-format
      */
 
@@ -1220,7 +1380,7 @@ void classifyMultiple(
      * Destination IP Address, Source Port, Destination Port, and Protocol).
      * Source (ish): https://docs.microsoft.com/en-us/windows/win32/fwp/ale-stateful-filtering
      */
-    
+
     // Define variables.
     FWPS_PACKET_INJECTION_STATE injection_state;
     PNET_BUFFER_LIST nbl;
@@ -1244,7 +1404,7 @@ void classifyMultiple(
     }
 
     // Get injection handle.
-    handle = getInjectionHandle(packetInfo);    
+    handle = getInjectionHandle(packetInfo);
 
     // Interpret layer data as netbuffer list and check if it's a looping packet.
     // Packets created/injected by us will loop back to us.
