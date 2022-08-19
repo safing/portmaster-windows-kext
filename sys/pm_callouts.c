@@ -447,8 +447,8 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
 
         // Use localhost as source and destination to bypass the windows firewall.
         if(useLocalHost) {
-            ipHeader->SrcAddr[3] = 0x01000000; // loopback address ::1
-            ipHeader->DstAddr[3] = 0x01000000; // loopback address ::1
+            ipHeader->SrcAddr[3] = IPv6_LOCALHOST_PART4_NETOWRK_ORDER; // loopback address ::1
+            ipHeader->DstAddr[3] = IPv6_LOCALHOST_PART4_NETOWRK_ORDER; // loopback address ::1
         } else {
             RtlCopyMemory(ipHeader->SrcAddr, originalIPHeader->DstAddr, sizeof(originalIPHeader->SrcAddr)); // Source becomes destination.
             RtlCopyMemory(ipHeader->DstAddr, originalIPHeader->SrcAddr, sizeof(originalIPHeader->DstAddr)); // Destination becomes source.
@@ -520,8 +520,8 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
 
         // Use localhost as source and destination to bypass the Windows firewall
         if(useLocalHost) {
-            ipHeader->SrcAddr = 0x0100007f; // loopback address 127.0.0.1
-            ipHeader->DstAddr = 0x0100007f; // loopback address 127.0.0.1
+            ipHeader->SrcAddr = IPv4_LOCALHOST_IP_NETWORK_ORDER; // loopback address 127.0.0.1
+            ipHeader->DstAddr = IPv4_LOCALHOST_IP_NETWORK_ORDER; // loopback address 127.0.0.1
         } else {
             ipHeader->SrcAddr = originalIPHeader->DstAddr; // Source becomes destination
             ipHeader->DstAddr = originalIPHeader->SrcAddr; // Destination becomes source
@@ -712,7 +712,7 @@ void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacke
 void send_block_packet_if_possible(portmaster_packet_info* packetInfo, void* originalPacket, ULONG originalPacketLength) {
     if(packetInfo->protocol == 6) { // TCP
         send_tcp_rst_packet(packetInfo, originalPacket, originalPacketLength);
-    } else if(packetInfo->protocol == 17) { // UDP
+    } else { // Everything else
         send_icmp_blocked_packet(packetInfo, originalPacket, originalPacketLength, TRUE);
     }
 }
