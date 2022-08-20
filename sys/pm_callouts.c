@@ -712,7 +712,7 @@ void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacke
 void send_block_packet_if_possible(portmaster_packet_info* packetInfo, void* originalPacket, ULONG originalPacketLength) {
     if(packetInfo->protocol == 6) { // TCP
         send_tcp_rst_packet(packetInfo, originalPacket, originalPacketLength);
-    } else { // Everything else
+    } else if(packetInfo->protocol == 17) { // UDP
         send_icmp_blocked_packet(packetInfo, originalPacket, originalPacketLength, TRUE);
     }
 }
