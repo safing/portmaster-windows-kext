@@ -125,14 +125,14 @@ void destroyCalloutStructure() {
 }
 
 HANDLE getInjectionHandle(pportmaster_packet_info packetInfo) {
+    BOOL isLoopback = is_packet_loopback(packetInfo);
     if (packetInfo->ipV6 == 0) {
-        if (packetInfo->direction == 1) { //Inbound
+        if (packetInfo->direction == 1 || !isLoopback) { //Inbound
             return inject_in4_handle;
         }
         return inject_out4_handle;
     }
-
-    if (packetInfo->direction == 1) { //Inbound
+    if (packetInfo->direction == 1 || !isLoopback) { //Inbound
         return inject_in6_handle;
     }
     return inject_out6_handle;
@@ -385,7 +385,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
     // It seems safer to always use UNSPECIFIED_COMPARTMENT_ID.
     // packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
 
-    if (packetInfo->direction == 0) {
+    if (packetInfo->direction == 0 || is_packet_loopback(packetInfo)) {
         // INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
                 UNSPECIFIED_COMPARTMENT_ID, inject_nbl, free_after_inject,
@@ -920,7 +920,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     handle = getInjectionHandle(packetInfo);
 
     // Inject packet.
-    if (packetInfo->direction == 0) {
+    if (packetInfo->direction == 0 || is_packet_loopback(packetInfo)) {
         // INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
                 UNSPECIFIED_COMPARTMENT_ID, inject_nbl, free_after_inject,
@@ -997,7 +997,7 @@ void copy_and_inject(portmaster_packet_info* packetInfo, PNET_BUFFER nb, UINT32 
     handle = getInjectionHandle(packetInfo);
 
     // Inject packet.
-    if (packetInfo->direction == 0) {
+    if (packetInfo->direction == 0 || is_packet_loopback(packetInfo)) {
         // INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
                 UNSPECIFIED_COMPARTMENT_ID, inject_nbl, free_after_inject,
@@ -1128,28 +1128,6 @@ FWP_ACTION_TYPE classifySingle(
     //Shift back
     if (packetInfo->direction == 1) { //Inbound
         NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
-    }
-
-    // Special case: Windows cannot recv-inject packets to localhost, so we
-    // need to let everything through. The Portmaster must be aware of this
-    // and check both sides of the connection when it sees the outgoing packet
-    // on the loopback interface.
-    // TODO: Use the new fast-tracking system for this.
-    if (packetInfo->direction == 1) {
-        if (packetInfo->ipV6) {
-            if (
-                packetInfo->localIP[0] == 0 &&
-                packetInfo->localIP[1] == 0 &&
-                packetInfo->localIP[2] == 0 &&
-                packetInfo->localIP[3] == IPv6_LOCALHOST_PART4
-            ) {
-                return FWP_ACTION_PERMIT;
-            }
-        } else {
-            if ((packetInfo->localIP[0] & IPv4_LOCALHOST_NET_MASK) == IPv4_LOCALHOST_NET) {
-                return FWP_ACTION_PERMIT;
-            }
-        }
     }
 
     // Set default verdict.

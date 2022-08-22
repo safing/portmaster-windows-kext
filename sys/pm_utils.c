@@ -48,3 +48,11 @@ BOOL is_ipv6_loopback(UINT32 *addr) {
            addr[2] == 0 &&
            addr[3] == IPv6_LOCALHOST_PART4;
 }
+
+BOOL is_packet_loopback(pportmaster_packet_info packet) {
+    if(packet->ipV6) {
+        return is_ipv6_loopback(packet->remoteIP);
+    } else {
+        return is_ipv4_loopback(packet->remoteIP[0]);
+    }
+}
