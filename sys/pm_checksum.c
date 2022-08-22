@@ -63,36 +63,45 @@ VOID calc_ipv4_checksum(void* data, int len, BOOL calc_transport) {
 
         INFO("calculated checksum: 0x%04X (NetworkByteorder), 0x%02X%02X", ip_header->Checksum, ip_header->Checksum&0x00FF, (ip_header->Checksum&0xFF00)>>8);
 
-        if (calc_transport && (ip_header->Protocol == 6 || ip_header->Protocol == 17)) {
-            // reset sum
-            sum = 0;
+        if (calc_transport) {
+            if (ip_header->Protocol == 6 || ip_header->Protocol == 17) {
+                // reset sum
+                sum = 0;
 
-            // pseudo header
-            sum += checksum_add((void*) &ip_header->SrcAddr, 8); // src, dst address
-            sum += ip_header->Protocol<<8; // zero byte + protocol in network order
-            sum += ip_header->Length - (ip_header_len<<8); // payload length in network order
+                // pseudo header
+                sum += checksum_add((void*) &ip_header->SrcAddr, 8); // src, dst address
+                sum += ip_header->Protocol<<8; // zero byte + protocol in network order
+                sum += ip_header->Length - (ip_header_len<<8); // payload length in network order
 
-            // TCP
-            if (ip_header->Protocol == 6 && len >= ip_header_len + 20 /* TCP Header */) {
-                PTCP_HEADER tcp_header = (PTCP_HEADER) ((UINT8*)data + ip_header_len);
+                // TCP
+                if (ip_header->Protocol == 6 && len >= ip_header_len + 20 /* TCP Header */) {
+                    PTCP_HEADER tcp_header = (PTCP_HEADER) ((UINT8*)data + ip_header_len);
 
-                tcp_header->Checksum = 0;
-                sum += checksum_add((void*) tcp_header, len - ip_header_len);
-                tcp_header->Checksum = checksum_finish(sum);
+                    tcp_header->Checksum = 0;
+                    sum += checksum_add((void*) tcp_header, len - ip_header_len);
+                    tcp_header->Checksum = checksum_finish(sum);
 
-                // UDP
-            } else if (ip_header->Protocol == 17 && len >= ip_header_len + 8 /* UDP Header */) {
-                PUDP_HEADER udp_header = (PUDP_HEADER) ((UINT8*)data + ip_header_len);
+                    // UDP
+                } else if (ip_header->Protocol == 17 && len >= ip_header_len + 8 /* UDP Header */) {
+                    PUDP_HEADER udp_header = (PUDP_HEADER) ((UINT8*)data + ip_header_len);
 
-                udp_header->Checksum = 0;
-                sum += checksum_add((void*) udp_header, len - ip_header_len);
-                udp_header->Checksum = checksum_finish(sum);
+                    udp_header->Checksum = 0;
+                    sum += checksum_add((void*) udp_header, len - ip_header_len);
+                    udp_header->Checksum = checksum_finish(sum);
 
-                // special case for UDP
-                if (udp_header->Checksum == 0) {
-                    udp_header->Checksum = 0xFFFF;
+                    // special case for UDP
+                    if (udp_header->Checksum == 0) {
+                        udp_header->Checksum = 0xFFFF;
+                    }
                 }
+            // ICMP
+            } else if (ip_header->Protocol == 1 && len >= ip_header_len + sizeof(ICMP_HEADER)) {
+                PICMP_HEADER icmp_header = (PICMP_HEADER) ((UINT8*)data + ip_header_len);
 
+                sum = 0;
+                icmp_header->Checksum = 0;
+                sum += checksum_add((void*) icmp_header, len - ip_header_len);
+                icmp_header->Checksum = checksum_finish(sum);
             }
         }
     }
@@ -108,7 +117,7 @@ VOID calc_ipv6_checksum(void* data, int len, BOOL calc_transport) {
         return;
     }
 
-    if (ip_header_len > 0 && calc_transport && (protocol == 6 || protocol == 17)) {
+    if (ip_header_len > 0 && calc_transport && (protocol == 6 || protocol == 17 || protocol == 58)) {
         PIPV6_HEADER ip_header = (PIPV6_HEADER) data;
         UINT32 sum = 0;
         UINT32 payload_len = len - ip_header_len;
@@ -145,7 +154,13 @@ VOID calc_ipv6_checksum(void* data, int len, BOOL calc_transport) {
             if (udp_header->Checksum == 0) {
                 udp_header->Checksum = 0xFFFF;
             }
+        // ICMPv6
+        }  else if(protocol == 58 && len >= ip_header_len + sizeof(ICMP_HEADER)) {
+            PICMP_HEADER icmp_header = (PICMP_HEADER) ((UINT8*)data + ip_header_len);
 
+            icmp_header->Checksum = 0;
+            sum += checksum_add((void*) icmp_header, len - ip_header_len);
+            icmp_header->Checksum = checksum_finish(sum);
         }
     }
 }

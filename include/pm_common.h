@@ -112,6 +112,19 @@ typedef struct {
 } UDP_HEADER, *PUDP_HEADER;
 
 /*
+* ICMP Header (used also for ICMPv6)
+* Note: This header is used only for ICMP type Destination Unreachable (3). It is not valid for the other message types.
+*/
+typedef struct
+{
+  UINT8  Type;		// message type
+  UINT8  Code;		// type sub-code
+  UINT16 Checksum;
+  UINT32 unused;
+  // This header is not complete for all ICMP packets variants
+}ICMP_HEADER, *PICMP_HEADER;
+
+/*
  * Verdict can be permanent or temporary for one specific packet.
  * If verdict is temporary, portmaster returns negativ value of PORTMASTER_VERDICT_*
  */
@@ -205,7 +218,10 @@ CTL_CODE(SIOCTL_TYPE, 0x804, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
 #define IPv4_LOCALHOST_NET_MASK 0xFF000000
 #define IPv4_LOCALHOST_NET 0x7F000000
 
-#define IPv6_LOCALHOST_PART4 0x1
+#define IPv4_LOCALHOST_IP_NETWORK_ORDER 0x0100007f
+
+#define IPv6_LOCALHOST_PART4               0x1
+#define IPv6_LOCALHOST_PART4_NETOWRK_ORDER 0x01000000
 
 #define PORT_DNS 53
 #define PORT_DNS_NBO 0x3500
