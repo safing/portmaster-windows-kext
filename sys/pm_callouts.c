@@ -426,7 +426,7 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
         UINT16 headerLength = sizeof(IPV6_HEADER) + sizeof(ICMP_HEADER);
         UINT16 packetLength = headerLength + bytesToCopyFromOriginalPacket;
 
-        void *icmpPacket = portmaster_malloc(packetLength, FALSE);
+        void *icmpPacket = NULL;
         PIPV6_HEADER ipHeader;
         PICMP_HEADER icmpHeader;
 
@@ -437,6 +437,9 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
             bytesToCopyFromOriginalPacket = 1280 - headerLength;
             packetLength = headerLength + bytesToCopyFromOriginalPacket;
         }
+
+        // Allocate memory for the new packet
+        icmpPacket = portmaster_malloc(packetLength, FALSE);
 
         // Initialize IPv6 header
         ipHeader = (PIPV6_HEADER) icmpPacket;
@@ -460,7 +463,7 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
 
         // Calculate checksum for the original packet and copy it in the icmp body.
         calc_ipv6_checksum(originalPacket, originalPacketLength, TRUE);
-        RtlCopyMemory(((UINT8*)icmpHeader + sizeof(ICMP_HEADER)), originalPacket, bytesToCopyFromOriginalPacket);
+        RtlCopyMemory((UINT8*)icmpHeader + sizeof(ICMP_HEADER), originalPacket, bytesToCopyFromOriginalPacket);
 
         // Calculate checksum for the icmp packet
         calc_ipv6_checksum(icmpPacket, packetLength, TRUE);
@@ -498,15 +501,20 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
         // Initialize variables
         PNET_BUFFER_LIST injectNBL;
         NTSTATUS status;
-        UINT16 packetLength = sizeof(IPV4_HEADER) + sizeof(ICMP_HEADER) + bytesToCopyFromOriginalPacket;
-        void *icmpPacket = portmaster_malloc(packetLength, FALSE);
+        UINT16 headerLength = sizeof(IPV6_HEADER) + sizeof(ICMP_HEADER);
+        UINT16 packetLength = headerLength + bytesToCopyFromOriginalPacket;
+        void *icmpPacket = NULL; 
         PIPV4_HEADER ipHeader;
         PICMP_HEADER icmpHeader;
 
         // Check if the body is less then 8 bytes
         if(bytesToCopyFromOriginalPacket < originalPacketLength) {
             bytesToCopyFromOriginalPacket = (UINT16)originalPacketLength;
+            packetLength = headerLength + bytesToCopyFromOriginalPacket;
         }
+
+        // Allocate memory for the new packet
+        icmpPacket = portmaster_malloc(packetLength, FALSE);
 
         // Initialize IPv4 header
         ipHeader = (PIPV4_HEADER) icmpPacket;
@@ -712,7 +720,7 @@ void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacke
 void send_block_packet_if_possible(portmaster_packet_info* packetInfo, void* originalPacket, ULONG originalPacketLength) {
     if(packetInfo->protocol == 6) { // TCP
         send_tcp_rst_packet(packetInfo, originalPacket, originalPacketLength);
-    } else if(packetInfo->protocol == 17) { // UDP
+    } else { // Everithing else
         send_icmp_blocked_packet(packetInfo, originalPacket, originalPacketLength, TRUE);
     }
 }
