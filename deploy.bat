@@ -1,14 +1,14 @@
-rem reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Debug Print" /V DEFAULT /t REG_DWORD /d 0xf
-echo Compile, Sign and Copy the Kernel Driver (but not the dll!)
-set WDDK_SOURCE=install\WDDK\amd64\pm_kernel64.sys
-rem set MINGW_DEST=install\MINGW\amd64\pm_kernel64.sys
-set MINGW_DEST=install\MINGW\amd64\
+echo Compile, Sign and Copy the Kernel Driver with the dll
+set WDDK_SOURCE=install\WDDK\x64\Debug\pm_kernel64.sys
 del WDDK_SOURCE
-del MINGW_DEST
-call wddk-build.bat
-SignTool sign /v /s TestCertStoreName /n TestCertName %WDDK_SOURCE%
-echo Copy the signed Kernel Driver from %WDDK_SOURCE% to %MINGW_DEST%
-copy %WDDK_SOURCE% %MINGW_DEST%
+
+set DLL_SOURCE=install\DLL\x64\pm_kernel_glue.dll
+del DLL_SOURCE
+
+@REM call wddk-build.bat
+msbuild /t:Build /p:Configuration=Debug /p:Platform=x64
+SignTool sign /v /s TestCertStoreName /n TestCertName /fd SHA256 %WDDK_SOURCE%
 
 echo Copy the Kernel Driver to Portmaster updates dir as dev version
 copy %WDDK_SOURCE% C:\ProgramData\Safing\Portmaster\updates\windows_amd64\kext\portmaster-kext_v0-0-0.sys
+copy %DLL_SOURCE% C:\ProgramData\Safing\Portmaster\updates\windows_amd64\kext\portmaster-kext_v0-0-0.dll

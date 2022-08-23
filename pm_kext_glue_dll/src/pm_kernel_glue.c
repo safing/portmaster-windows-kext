@@ -153,6 +153,8 @@ pmDriverInstallReTry:
             SetLastError(ERROR_BAD_LENGTH);
             goto pmDriverInstallExit;
         }
+        
+        // TODO: error C4996: 'mbstowcs': This function or variable may be unsafe. Consider using mbstowcs_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS.
         mbstowcs(pm_sys, portmaster_kext_path, MAX_PATH);
     }
     INFO("Trying to start Service '%ls'", pm_sys);

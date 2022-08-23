@@ -16,7 +16,7 @@
 #define PM_DEBUG_H
 
 /****************************************************************************/
-// #define DEBUG_ON		// Undefine if Debug Functions should not be compiled
+#define DEBUG_ON		// Undefine if Debug Functions should not be compiled
 /****************************************************************************/
 
 #define DEBUG_BUFSIZE       256

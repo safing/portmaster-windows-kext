@@ -889,7 +889,7 @@ FWP_ACTION_TYPE classifySingle(
     verdict_t verdict;
     int rc;
     KLOCK_QUEUE_HANDLE lock_handle_vc, lock_handle_pc;
-    pportmaster_packet_info copiedPacketInfo, redirInfo;
+    pportmaster_packet_info copiedPacketInfo = NULL, redirInfo = NULL;
     PPM_IPHDR ip_header;
     UINT16 srcPort, dstPort;
     ULONG maxBytes, data_len;
