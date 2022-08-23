@@ -38,7 +38,7 @@
  *
  */
 HANDLE handle;
-int logLevel= LEVEL_INFO;
+int logLevel= LEVEL_ERROR;
 
 /****************************************************************************/
 /* Portmaster  API                                                          */
@@ -50,7 +50,7 @@ int logLevel= LEVEL_INFO;
  */
 extern _EXPORT int PortmasterInit() {
     int rc= 0;
-    logLevel= LEVEL_DEBUG;
+    logLevel= LEVEL_ERROR;
     INFO("Portmaster Kernel Extension initialized");
     return rc;
 }

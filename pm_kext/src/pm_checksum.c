@@ -95,7 +95,7 @@ VOID calc_ipv4_checksum(void* data, int len, BOOL calc_transport) {
                     }
                 }
             // ICMP
-            } else if (ip_header->Protocol == 1 && len >= ip_header_len + sizeof(ICMP_HEADER)) {
+            } else if (ip_header->Protocol == 1 && len > ip_header_len + sizeof(ICMP_HEADER)) {
                 PICMP_HEADER icmp_header = (PICMP_HEADER) ((UINT8*)data + ip_header_len);
 
                 sum = 0;
@@ -155,7 +155,7 @@ VOID calc_ipv6_checksum(void* data, int len, BOOL calc_transport) {
                 udp_header->Checksum = 0xFFFF;
             }
         // ICMPv6
-        }  else if(protocol == 58 && len >= ip_header_len + sizeof(ICMP_HEADER)) {
+        }  else if(protocol == 58 && len > ip_header_len + sizeof(ICMP_HEADER)) {
             PICMP_HEADER icmp_header = (PICMP_HEADER) ((UINT8*)data + ip_header_len);
 
             icmp_header->Checksum = 0;
