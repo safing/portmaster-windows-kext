@@ -28,9 +28,6 @@
     <ClCompile Include="src\pm_checksum.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\pm_col_wrapper.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\pm_debug.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -45,6 +42,15 @@
     </ClCompile>
     <ClCompile Include="src\pm_utils.c">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="col\utils.c">
+      <Filter>Source Files\col</Filter>
+    </ClCompile>
+    <ClCompile Include="col\verdict_cache.c">
+      <Filter>Source Files\col</Filter>
+    </ClCompile>
+    <ClCompile Include="col\packet_cache.c">
+      <Filter>Source Files\col</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -89,15 +95,6 @@
     </ClInclude>
     <ClInclude Include="..\include\verdict_cache.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\col\packet_cache.c">
-      <Filter>Source Files\col</Filter>
-    </ClInclude>
-    <ClInclude Include="..\col\utils.c">
-      <Filter>Source Files\col</Filter>
-    </ClInclude>
-    <ClInclude Include="..\col\verdict_cache.c">
-      <Filter>Source Files\col</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

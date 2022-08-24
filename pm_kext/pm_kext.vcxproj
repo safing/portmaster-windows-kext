@@ -101,6 +101,7 @@
       <TreatWarningAsError>false</TreatWarningAsError>
       <LanguageStandard_C>stdc11</LanguageStandard_C>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <UseFullPaths>false</UseFullPaths>
     </ClCompile>
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\wdmsec.lib;$(DDK_LIB_PATH)\ndis.lib;$(DDK_LIB_PATH)\fwpkclnt.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -115,6 +116,7 @@
       <TreatWarningAsError>false</TreatWarningAsError>
       <LanguageStandard_C>stdc11</LanguageStandard_C>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <UseFullPaths>false</UseFullPaths>
     </ClCompile>
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\wdmsec.lib;$(DDK_LIB_PATH)\ndis.lib;$(DDK_LIB_PATH)\fwpkclnt.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -134,18 +136,15 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\col\packet_cache.c">
-      <FileType>CppCode</FileType>
-    </ClInclude>
-    <ClInclude Include="..\col\utils.c">
-      <FileType>CppCode</FileType>
-    </ClInclude>
-    <ClInclude Include="..\col\verdict_cache.c">
-      <FileType>CppCode</FileType>
-    </ClInclude>
+    <ClCompile Include="col\packet_cache.c">
+      <DeploymentContent>false</DeploymentContent>
+    </ClCompile>
+    <ClCompile Include="col\utils.c">
+      <DeploymentContent>false</DeploymentContent>
+    </ClCompile>
+    <ClCompile Include="col\verdict_cache.c" />
     <ClCompile Include="src\pm_callouts.c" />
     <ClCompile Include="src\pm_checksum.c" />
-    <ClCompile Include="src\pm_col_wrapper.c" />
     <ClCompile Include="src\pm_debug.c" />
     <ClCompile Include="src\pm_kernel.c" />
     <ClCompile Include="src\pm_netbuffer.c" />

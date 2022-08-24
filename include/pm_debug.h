@@ -16,7 +16,7 @@
 #define PM_DEBUG_H
 
 /****************************************************************************/
-#define DEBUG_ON		// Undefine if Debug Functions should not be compiled
+// #define DEBUG_ON		// Undefine if Debug Functions should not be compiled
 /****************************************************************************/
 
 #define DEBUG_BUFSIZE       256
@@ -26,8 +26,9 @@
 #define LEVEL_ERROR 3
 
 #ifndef LOGGER_NAME
-	#define LOGGER_NAME "pm_default"
+    #define LOGGER_NAME __FILE__
 #endif
+
 /*
  * These Logger Variables should be set (REDEFINED) in the including file
  */

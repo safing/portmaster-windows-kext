@@ -47,26 +47,19 @@ This is how packets are handled:
 The Windows Portmaster Kernel Extension is currently only developed and tested for the amd64 (64-bit) architecture.
 
 Prerequesites:
-
+- Visual Studio >= 2017
 - Driver (`.sys`)
   - [WDK 7.1](https://www.microsoft.com/en-us/download/details.aspx?id=11800)
-- Library (`.dll`)
-  - MINGW (x64)
 
-Build driver:
 
-    :: open a _x64 Free Build Environment_ console
-    wddk-build.bat
+Build driver and library:
+
+    :: open a Visual Studio 2022 Developer Command Prompt (usualy located in C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat)
+    release.bat
     :: built driver lands in install\WDDK\amd64
 
-    :: shortcut to build, sign and copy the driver to install\MINGW\amd64:
+    :: shortcut to build, sign and copy the driver to portmaster install directory:
     deploy.bat
-
-Build library:
-
-    # open a mingw x64 console
-    ./mingw-build.sh
-    # built library lands in install\MINGW\amd64
 
 Test Signing:  
 In order to test the driver on your machine, you will have to test sign it (starting with Windows 10). Here is how you can do this:

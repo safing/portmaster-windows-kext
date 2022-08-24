@@ -10,10 +10,17 @@
  *  Scope:       Kernelmode
  *               (Userland for development)
  */
+
+#define BUILD_ENV_DRIVER
+
 #include <stdlib.h>
 #include <limits.h>
 
-#include "../include/packet_cache.h"
+#include "pm_kernel.h"
+#include "pm_common.h"
+#include "packet_cache.h"
+#include "pm_utils.h"
+#include "pm_debug.h"
 
 /**
  * @brief Initializes the packet cache
