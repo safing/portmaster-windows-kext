@@ -10,12 +10,15 @@
  *               (Userland for development)
  */
 
+#define BUILD_ENV_DRIVER
+
 #include <stdlib.h>
 #include <limits.h>
 
-#include "../include/verdict_cache.h"
-#include "../include/pm_utils.h"
-
+#include "pm_kernel.h"
+#include "verdict_cache.h"
+#include "pm_utils.h"
+#include "pm_debug.h"
 
 /**
  * @brief Initializes the verdict cache

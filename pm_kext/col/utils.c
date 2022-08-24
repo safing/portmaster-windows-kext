@@ -11,7 +11,8 @@
 
 #include <stdlib.h>
 
-#include "../include/pm_utils.h"
+#include "pm_kernel.h"
+#include "pm_utils.h"
 
 /**
  * @brief Compares two PORTMASTER_PACKET_INFO for full equality
