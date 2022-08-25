@@ -23,6 +23,6 @@ echo.
 
 echo.
 echo =====
-echo YOUR TURN: rename %DISTDIR%\windowskext-vX-X-X.sys and %DISTDIR%\windowskext-vX-X-X.dll to correct versions!
+echo YOUR TURN: rename %DISTDIR%\portmaster-kext-vX-X-X.sys and %DISTDIR%\portmaster-kext-vX-X-X.dll to correct versions!
 echo DONE!
 echo.

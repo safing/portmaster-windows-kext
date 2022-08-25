@@ -96,5 +96,24 @@
     <ClInclude Include="..\include\verdict_cache.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\version.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="version.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Inf Include="PortmasterKext64.inx">
+      <Filter>Resource Files</Filter>
+    </Inf>
+    <Inf Include="PortmasterKext32.inx">
+      <Filter>Resource Files</Filter>
+    </Inf>
   </ItemGroup>
 </Project>

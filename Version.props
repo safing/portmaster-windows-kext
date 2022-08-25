@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <PM_VERSION_MAJOR>1</PM_VERSION_MAJOR>
+    <PM_VERSION_MINOR>0</PM_VERSION_MINOR>
+    <PM_VERSION_REVISION>11</PM_VERSION_REVISION>
+    <PM_VERSION_BUILD>0</PM_VERSION_BUILD>
+  </PropertyGroup>
+  <PropertyGroup />
+  <ItemDefinitionGroup />
+  <ItemGroup>
+    <BuildMacro Include="PM_VERSION_MAJOR">
+      <Value>$(PM_VERSION_MAJOR)</Value>
+    </BuildMacro>
+    <BuildMacro Include="PM_VERSION_MINOR">
+      <Value>$(PM_VERSION_MINOR)</Value>
+    </BuildMacro>
+    <BuildMacro Include="PM_VERSION_REVISION">
+      <Value>$(PM_VERSION_REVISION)</Value>
+    </BuildMacro>
+    <BuildMacro Include="PM_VERSION_BUILD">
+      <Value>$(PM_VERSION_BUILD)</Value>
+    </BuildMacro>
+  </ItemGroup>
+</Project>
