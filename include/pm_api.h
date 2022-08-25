@@ -21,7 +21,7 @@
 #define __PORTMASTER_H
 
 #ifndef _EXPORT
-#define _EXPORT     __declspec(dllimport)
+#define _EXPORT     __declspec(dllexport)
 #endif
 
 #ifdef __cplusplus

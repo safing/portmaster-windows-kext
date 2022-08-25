@@ -1,3 +1,7 @@
-PortmasterKext*
+PortmasterKext
+PortmasterKext64*
+PortmasterKext.cab
+Signable*
 Signed*
 dist
+verpatch.exe

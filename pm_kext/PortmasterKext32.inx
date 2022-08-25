@@ -23,7 +23,7 @@ Class = WFPCALLOUTS
 ClassGuid = {57465043-616C-6C6F-7574-5F636C617373}
 Provider = %Provider%
 CatalogFile = PortmasterKext32.Cat
-DriverVer = 01/01/2019,1.0.11.0
+
 
 [SourceDisksNames]
 1 = %DiskName%
@@ -35,17 +35,17 @@ PortmasterKext32.sys = 1
 DefaultDestDir = 12 ; %windir%\system32\drivers
 PortmasterKext.DriverFiles = 12 ; %windir%\system32\drivers
 
-[DefaultInstall]
+[InstallSection_32]
 OptionDesc = %Description%
 CopyFiles = PortmasterKext.DriverFiles
 
-[DefaultInstall.Services]
+[InstallSection_32.Services]
 AddService = %ServiceName%,,PortmasterKext.Service
 
-[DefaultUninstall]
+[UninstallSection_32]
 DelFiles = PortmasterKext.DriverFiles
 
-[DefaultUninstall.Services]
+[UninstallSection_32.Services]
 DelService = PortmasterKext,0x200 ; SPSVCINST_STOPSERVICE
 
 [PortmasterKext.DriverFiles]
