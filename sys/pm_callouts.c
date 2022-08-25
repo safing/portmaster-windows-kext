@@ -34,10 +34,8 @@ static KSPIN_LOCK verdictCacheV6Lock;
 packet_cache_t* packetCache;    //Not static anymore, because it is also used in pm_kernel.c
 KSPIN_LOCK packetCacheLock;
 
-static HANDLE inject_in4_handle = NULL;
-static HANDLE inject_out4_handle = NULL;
-static HANDLE inject_in6_handle = NULL;
-static HANDLE inject_out6_handle = NULL;
+static HANDLE inject_v4_handle = NULL;
+static HANDLE inject_v6_handle = NULL;
 
 /******************************************************************
  * Helper Functions
@@ -69,33 +67,17 @@ NTSTATUS initCalloutStructure() {
     // Create the packet injection handles.
     status = FwpsInjectionHandleCreate(AF_INET,
             FWPS_INJECTION_TYPE_NETWORK,
-            &inject_in4_handle);
+            &inject_v4_handle);
     if (!NT_SUCCESS(status)) {
         ERR("failed to create WFP in4 injection handle", status);
         return status;
     }
 
-    status = FwpsInjectionHandleCreate(AF_INET,
-            FWPS_INJECTION_TYPE_NETWORK,
-            &inject_out4_handle);
-    if (!NT_SUCCESS(status)) {
-        ERR("failed to create WFP out4 injection handle", status);
-        return status;
-    }
-
     status = FwpsInjectionHandleCreate(AF_INET6,
             FWPS_INJECTION_TYPE_NETWORK,
-            &inject_in6_handle);
+            &inject_v6_handle);
     if (!NT_SUCCESS(status)) {
         ERR("failed to create WFP in6 injection handle", status);
-        return status;
-    }
-
-    status = FwpsInjectionHandleCreate(AF_INET6,
-            FWPS_INJECTION_TYPE_NETWORK,
-            &inject_out6_handle);
-    if (!NT_SUCCESS(status)) {
-        ERR("failed to create WFP out6 injection handle", status);
         return status;
     }
 
@@ -103,39 +85,23 @@ NTSTATUS initCalloutStructure() {
 }
 
 void destroyCalloutStructure() {
-    if (inject_in4_handle != NULL) {
-        FwpsInjectionHandleDestroy(inject_in4_handle);
-        inject_in4_handle = NULL;
+    if (inject_v4_handle != NULL) {
+        FwpsInjectionHandleDestroy(inject_v4_handle);
+        inject_v4_handle = NULL;
     }
 
-    if (inject_out4_handle != NULL) {
-        FwpsInjectionHandleDestroy(inject_out4_handle);
-        inject_out4_handle = NULL;
-    }
-
-    if (inject_in6_handle != NULL) {
-        FwpsInjectionHandleDestroy(inject_in6_handle);
-        inject_in6_handle = NULL;
-    }
-
-    if (inject_out6_handle != NULL) {
-        FwpsInjectionHandleDestroy(inject_out6_handle);
-        inject_out6_handle = NULL;
+    if (inject_v6_handle != NULL) {
+        FwpsInjectionHandleDestroy(inject_v6_handle);
+        inject_v6_handle = NULL;
     }
 }
 
 HANDLE getInjectionHandle(pportmaster_packet_info packetInfo) {
     if (packetInfo->ipV6 == 0) {
-        if (packetInfo->direction == 1) { //Inbound
-            return inject_in4_handle;
-        }
-        return inject_out4_handle;
+        return inject_v4_handle;
+    } else {
+        return inject_v6_handle;
     }
-
-    if (packetInfo->direction == 1) { //Inbound
-        return inject_in6_handle;
-    }
-    return inject_out6_handle;
 }
 
 NTSTATUS genericNotify(
@@ -230,6 +196,38 @@ void redir_from_callout(pportmaster_packet_info packetInfo, pportmaster_packet_i
     }
     redir(packetInfo, redirInfo, packet, packet_len, dns);
 
+}
+
+NTSTATUS inject_packet(pportmaster_packet_info packetInfo, BOOL inbound, void *packet, ULONG packet_len) {
+    BOOL isLoopback = is_packet_loopback(packetInfo);
+    HANDLE handle = getInjectionHandle(packetInfo);
+    PNET_BUFFER_LIST injectNBL = NULL;
+    NTSTATUS status = 0;
+
+    status = wrap_packet_data_in_nb(packet, packet_len, &injectNBL);
+    if (!NT_SUCCESS(status)) {
+        ERR("wrap_packet_data_in_nb failed: %u", status);
+        portmaster_free(packet);
+        return status;
+    }
+
+    if (!inbound || isLoopback) {
+        status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
+                UNSPECIFIED_COMPARTMENT_ID, injectNBL, free_after_inject,
+                packet);
+        INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
+    } else {
+        status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
+                UNSPECIFIED_COMPARTMENT_ID, packetInfo->interfaceIndex,
+                packetInfo->subInterfaceIndex, injectNBL, free_after_inject,
+                packet);
+        INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
+    }
+
+    if (!NT_SUCCESS(status)) {
+        free_after_inject(packet, injectNBL, FALSE);
+    }
+    return status;
 }
 
 void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo, void* packet, ULONG packet_len, BOOL dns) {
@@ -371,38 +369,16 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
     }
 
     // re-inject ...
-    status = wrap_packet_data_in_nb(packet, packet_len, &inject_nbl);
-    if (!NT_SUCCESS(status)) {
-        ERR("redir > wrap_packet_data_in_nb failed: %u", status);
-        portmaster_free(packet);
-        return;
-    }
-    handle = getInjectionHandle(packetInfo);
 
     // Reset routing compartment ID, as we are changing where this is going to.
     // This necessity is unconfirmed.
     // Experience shows that using the compartment ID can sometimes cause errors.
     // It seems safer to always use UNSPECIFIED_COMPARTMENT_ID.
     // packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
-
-    if (packetInfo->direction == 0) {
-        // INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
-        status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                UNSPECIFIED_COMPARTMENT_ID, inject_nbl, free_after_inject,
-                packet);
-        INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
-    } else {
-        // INFO("Recv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
-        status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
-                UNSPECIFIED_COMPARTMENT_ID, packetInfo->interfaceIndex,
-                packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
-                packet);
-        INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
-    }
+    status = inject_packet(packetInfo, packetInfo->direction == 1, packet, packet_len); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
-        ERR("FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-        free_after_inject(packet, inject_nbl, FALSE);
+        ERR("redir -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
     }
 
     return;
@@ -425,6 +401,7 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
         NTSTATUS status;
         UINT16 headerLength = sizeof(IPV6_HEADER) + sizeof(ICMP_HEADER);
         UINT16 packetLength = headerLength + bytesToCopyFromOriginalPacket;
+        BOOL injectIsInbound;
 
         void *icmpPacket = NULL;
         PIPV6_HEADER ipHeader;
@@ -468,28 +445,13 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
         // Calculate checksum for the icmp packet
         calc_ipv6_checksum(icmpPacket, packetLength, TRUE);
 
-        // Create the net buffer list for the new ICMP packet.
-        status = wrap_packet_data_in_nb(icmpPacket, packetLength, &injectNBL);
+        // Reverse diraction and inject packet
+        injectIsInbound = packetInfo->direction == 1 ? FALSE : TRUE;
+        status = inject_packet(packetInfo, injectIsInbound, icmpPacket, packetLength); // this call will free the packet even if the inject fails
+
         if (!NT_SUCCESS(status)) {
-            ERR("ICMPv6 Port unreachable -> wrap_packet_data_in_nb failed: 0x%x", status);
-            portmaster_free(icmpPacket);
-            return;
+            ERR("send_icmp_blocked_packet ipv6 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
         }
-
-        if(packetInfo->direction == 1 || is_ipv6_loopback(packetInfo->remoteIP) || useLocalHost) {
-            // InjectNetworkReceive does not work for loopback packet but send works!?
-            status = FwpsInjectNetworkSendAsync(inject_out6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
-                    injectNBL, free_after_inject,
-                    icmpPacket);
-
-        } else {
-            // For outbound we need to receive the icmp packet.
-            status = FwpsInjectNetworkReceiveAsync(inject_in6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
-                    packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
-                    injectNBL, free_after_inject,
-                    icmpPacket);
-        }
-
     } else {
         // Initialize header for the original UDP packet
         ULONG originalIPHeaderLength = calc_ipv4_header_size(originalPacket, originalPacketLength);
@@ -506,6 +468,7 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
         void *icmpPacket = NULL; 
         PIPV4_HEADER ipHeader;
         PICMP_HEADER icmpHeader;
+        BOOL injectIsInbound;
 
         // Check if the body is less then 8 bytes
         if(bytesToCopyFromOriginalPacket < originalPacketLength) {
@@ -546,26 +509,12 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
         // Calculate checksum for the icmp packet
         calc_ipv4_checksum(icmpPacket, packetLength, TRUE);
 
-        // Create the net buffer list for the new ICMP packet
-        status = wrap_packet_data_in_nb(icmpPacket, packetLength, &injectNBL);
+        // Reverse diraction and inject packet
+        injectIsInbound = packetInfo->direction == 1 ? FALSE : TRUE;
+        status = inject_packet(packetInfo, injectIsInbound, icmpPacket, packetLength); // this call will free the packet even if the inject fails
+
         if (!NT_SUCCESS(status)) {
-            ERR("ICMP Port unreachable -> wrap_packet_data_in_nb failed: 0x%x", status);
-            portmaster_free(icmpPacket);
-            return;
-        }
-
-        if(packetInfo->direction == 1 || is_ipv4_loopback(packetInfo->remoteIP[0]) || useLocalHost) {
-            // InjectNetworkReceive does not work for loopback packet but send works!?
-            status = FwpsInjectNetworkSendAsync(inject_out4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
-                    injectNBL, free_after_inject,
-                    icmpPacket);
-
-        } else {
-            // For outbound we need to receive the rst packet.
-            status = FwpsInjectNetworkReceiveAsync(inject_in4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
-                    packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
-                    injectNBL, free_after_inject,
-                    icmpPacket);
+            ERR("send_icmp_blocked_packet ipv4 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
         }
     }
 }
@@ -589,6 +538,7 @@ void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacke
         void *tcpResetPacket;
         PIPV6_HEADER ipHeader;
         PTCP_HEADER tcpHeader;
+        BOOL injectIsInbound;
 
         // allocate memory for the reset packet
         tcpResetPacket = portmaster_malloc(packetLength, FALSE);
@@ -614,35 +564,15 @@ void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacke
         tcpHeader->Rst = 1;
 
         calc_ipv6_checksum(tcpResetPacket, packetLength, TRUE);
-
-        // Create the net buffer list for the new RST packet
-        status = wrap_packet_data_in_nb(tcpResetPacket, packetLength, &injectNBL);
-        if (!NT_SUCCESS(status)) {
-            ERR("RST packet ipv6 -> wrap_packet_data_in_nb failed: 0x%x", status);
-            portmaster_free(tcpResetPacket);
-            return;
-        }
-
-        // For inbound we need to send the rst packet. For the loopback is always send
-        if(packetInfo->direction == 1 || is_ipv6_loopback(packetInfo->remoteIP)) {
-            // InjectNetworkReceive does not work for loopback packet but send works!?
-            status = FwpsInjectNetworkSendAsync(inject_out6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
-                    injectNBL, free_after_inject,
-                    tcpResetPacket);
-        } else {
-            // For outbound we need to receive the rst packet.
-            status = FwpsInjectNetworkReceiveAsync(inject_in6_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
-                    packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
-                    injectNBL, free_after_inject,
-                    tcpResetPacket);
-        }
+        
+        // Reverse diraction and inject packet
+        injectIsInbound = packetInfo->direction == 1 ? FALSE : TRUE;
+        status = inject_packet(packetInfo, injectIsInbound, tcpResetPacket, packetLength); // this call will free the packet even if the inject fails
 
         if (!NT_SUCCESS(status)) {
-            ERR("Failed to inject IPv6/TCP RST packet: 0x%x", status);
-            free_after_inject(tcpResetPacket, injectNBL, FALSE);
-        }  else {
-            INFO("IPv6/TCP RST packet was send as a response to: %s", print_packet_info(packetInfo));
+            ERR("send_icmp_blocked_packet ipv6 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
         }
+
     } else {
         // Initialize header for the original packet with SYN flag
         ULONG originalIPHeaderLength = calc_ipv4_header_size(originalPacket, originalPacketLength);
@@ -656,6 +586,7 @@ void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacke
         void *tcpResetPacket;
         PIPV4_HEADER ipHeader;
         PTCP_HEADER tcpHeader;
+        BOOL injectIsInbound;
 
         // allocate memory for the reset packet
         tcpResetPacket = portmaster_malloc(packetLength, FALSE);
@@ -685,34 +616,12 @@ void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacke
 
         calc_ipv4_checksum(tcpResetPacket, packetLength, TRUE);
 
-        // Create the net buffer list for the new RST packet
-        status = wrap_packet_data_in_nb(tcpResetPacket, packetLength, &injectNBL);
-        if (!NT_SUCCESS(status)) {
-            ERR("RST packet ipv4 -> wrap_packet_data_in_nb failed: 0x%x", status);
-            portmaster_free(tcpResetPacket);
-            return;
-        }
+        // Reverse diraction and inject packet
+        injectIsInbound = packetInfo->direction == 1 ? FALSE : TRUE;
+        status = inject_packet(packetInfo, injectIsInbound, tcpResetPacket, packetLength); // this call will free the packet even if the inject fails
 
-        // For inbound we need to send the rst packet. For the loopback is always send
-        if(packetInfo->direction == 1 || is_ipv4_loopback(packetInfo->remoteIP[0])) {
-            // InjectNetworkReceive does not work for loopback packet but send works!?
-            status = FwpsInjectNetworkSendAsync(inject_out4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
-                    injectNBL, free_after_inject,
-                    tcpResetPacket);
-
-        } else {
-            // For outbound we need to receive the rst packet.
-            status = FwpsInjectNetworkReceiveAsync(inject_in4_handle, 0, 0, UNSPECIFIED_COMPARTMENT_ID,
-                    packetInfo->interfaceIndex, packetInfo->subInterfaceIndex,
-                    injectNBL, free_after_inject,
-                    tcpResetPacket);
-        }
-
-        if (!NT_SUCCESS(status)) {
-            ERR("Failed to inject IPv4/TCP RST packet: 0x%x", status);
-            free_after_inject(tcpResetPacket, injectNBL, FALSE);
-        }  else {
-            INFO("IPv4/TCP RST packet was send as a response to: %s", print_packet_info(packetInfo));
+        if(!NT_SUCCESS(status)) {
+            ERR("send_icmp_blocked_packet ipv4 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
         }
     }
 }
@@ -887,10 +796,12 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
         case PORTMASTER_VERDICT_REDIR_DNS:
             INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", print_packet_info(packetInfo));
             redir(packetInfo, packetInfo, packet, packet_len, TRUE);
+            // redir will free the packet memory
             return;
         case PORTMASTER_VERDICT_REDIR_TUNNEL:
             INFO("PORTMASTER_VERDICT_REDIR_TUNNEL: %s", print_packet_info(packetInfo));
             redir(packetInfo, packetInfo, packet, packet_len, FALSE);
+            // redir will free the packet memory
             return;
         default:
             WARN("unknown verdict: 0x%x {%s}", print_packet_info(packetInfo));
@@ -905,39 +816,10 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
         calc_ipv6_checksum(packet, packet_len, TRUE);
     }
 
-    // Create a new net buffer list.
-    status = wrap_packet_data_in_nb(packet, packet_len, &inject_nbl);
-    if (!NT_SUCCESS(status)) {
-        ERR("respond_with_verdict > wrap_packet_data_in_nb failed: %u", status);
-        portmaster_free(packet);
-        if (temporary) {
-            portmaster_free(packetInfo);
-        }
-        return;
-    }
-
-    // Get injection handle.
-    handle = getInjectionHandle(packetInfo);
-
-    // Inject packet.
-    if (packetInfo->direction == 0) {
-        // INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
-        status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                UNSPECIFIED_COMPARTMENT_ID, inject_nbl, free_after_inject,
-                packet);
-        INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
-    } else {
-        // INFO("Recv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
-        status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
-                UNSPECIFIED_COMPARTMENT_ID, packetInfo->interfaceIndex,
-                packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
-                packet);
-        INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
-    }
+    status = inject_packet(packetInfo, packetInfo->direction == 1, packet, packet_len); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
-        ERR("FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-        free_after_inject(packet, inject_nbl, FALSE);
+        ERR("respondWithVerdict -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
     }
 
     // If verdict is temporary, free packetInfo
@@ -985,36 +867,10 @@ void copy_and_inject(portmaster_packet_info* packetInfo, PNET_BUFFER nb, UINT32 
         calc_ipv6_checksum(packet, packet_len, TRUE);
     }
 
-    // Create a new net buffer list.
-    status = wrap_packet_data_in_nb(packet, packet_len, &inject_nbl);
-    if (!NT_SUCCESS(status)) {
-        ERR("copy_and_inject > wrap_packet_data_in_nb failed: %u", status);
-        portmaster_free(packet);
-        return;
-    }
-
-    // Get injection handle.
-    handle = getInjectionHandle(packetInfo);
-
-    // Inject packet.
-    if (packetInfo->direction == 0) {
-        // INFO("Send: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
-        status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                UNSPECIFIED_COMPARTMENT_ID, inject_nbl, free_after_inject,
-                packet);
-        INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
-    } else {
-        // INFO("Recv: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(inject_nbl), print_ipv4_packet(packet));
-        status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
-                UNSPECIFIED_COMPARTMENT_ID, packetInfo->interfaceIndex,
-                packetInfo->subInterfaceIndex, inject_nbl, free_after_inject,
-                packet);
-        INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
-    }
+    status = inject_packet(packetInfo, packetInfo->direction == 1, packet, packet_len); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
-        ERR("FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-        free_after_inject(packet, inject_nbl, FALSE);
+        ERR("copy_and_inject -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
     }
 }
 
@@ -1128,28 +984,6 @@ FWP_ACTION_TYPE classifySingle(
     //Shift back
     if (packetInfo->direction == 1) { //Inbound
         NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
-    }
-
-    // Special case: Windows cannot recv-inject packets to localhost, so we
-    // need to let everything through. The Portmaster must be aware of this
-    // and check both sides of the connection when it sees the outgoing packet
-    // on the loopback interface.
-    // TODO: Use the new fast-tracking system for this.
-    if (packetInfo->direction == 1) {
-        if (packetInfo->ipV6) {
-            if (
-                packetInfo->localIP[0] == 0 &&
-                packetInfo->localIP[1] == 0 &&
-                packetInfo->localIP[2] == 0 &&
-                packetInfo->localIP[3] == IPv6_LOCALHOST_PART4
-            ) {
-                return FWP_ACTION_PERMIT;
-            }
-        } else {
-            if ((packetInfo->localIP[0] & IPv4_LOCALHOST_NET_MASK) == IPv4_LOCALHOST_NET) {
-                return FWP_ACTION_PERMIT;
-            }
-        }
     }
 
     // Set default verdict.

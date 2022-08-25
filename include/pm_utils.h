@@ -67,6 +67,15 @@ BOOL is_ipv4_loopback(UINT32 addr);
  */
 BOOL is_ipv6_loopback(UINT32 *addr);
 
+/**
+ * @brief Checks if the paket has loopack ip address
+ *
+ * @par    packet = the packet to be checked 
+ * @return is loopback (bool)
+ *
+ */
+BOOL is_packet_loopback(pportmaster_packet_info packet);
+
 #endif
 
 #ifndef DYN_ALLOC_FREE
