@@ -5,7 +5,6 @@ del WDDK_SOURCE
 set DLL_SOURCE=install\DLL\x64\pm_kernel_glue.dll
 del DLL_SOURCE
 
-@REM call wddk-build.bat
 msbuild /t:Build /p:Configuration=Debug /p:Platform=x64
 SignTool sign /v /s TestCertStoreName /n TestCertName /fd SHA256 %WDDK_SOURCE%
 

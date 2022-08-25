@@ -47,16 +47,17 @@ This is how packets are handled:
 The Windows Portmaster Kernel Extension is currently only developed and tested for the amd64 (64-bit) architecture.
 
 Prerequesites:
-- Visual Studio >= 2017
-- Driver (`.sys`)
-  - [WDK 7.1](https://www.microsoft.com/en-us/download/details.aspx?id=11800)
-
+- WDK (https://docs.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk)
+  - Step 1: Install Visual Studio 2022
+  - Install Windows 11, version 22H2 SDK
+  - Install Windows 11, version 22H2 WDK
+    - When ask to install Visual studio extension say yes
 
 Build driver and library:
 
     :: open a Visual Studio 2022 Developer Command Prompt (usualy located in C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat)
-    release.bat
-    :: built driver lands in install\WDDK\amd64
+    release_build.bat
+    :: built driver lands in install\WDDK\x64\Release
 
     :: shortcut to build, sign and copy the driver to portmaster install directory:
     deploy.bat

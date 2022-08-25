@@ -14,11 +14,8 @@ Get one here: https://docs.microsoft.com/en-us/windows-hardware/drivers/dashboar
 
 ### Replace all versions
 
-There are version identifiers in these files:
-- inf/PortmasterKext32.inf
-- inf/PortmasterKext64.inf
-- release/release_set_metadata.bat (2 occurences)
-- sys/pm_kernel.rc (2 occurences)
+There version identifier is in the files:
+- Version.props
 
 ### Pre-Packaging
 
