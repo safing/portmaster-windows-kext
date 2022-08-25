@@ -198,7 +198,7 @@ void redir_from_callout(pportmaster_packet_info packetInfo, pportmaster_packet_i
 
 }
 
-NTSTATUS inject_packet(pportmaster_packet_info packetInfo, int diraction, void *packet, ULONG packet_len) {
+NTSTATUS inject_packet(pportmaster_packet_info packetInfo, BOOL inbound, void *packet, ULONG packet_len) {
     BOOL isLoopback = is_packet_loopback(packetInfo);
     HANDLE handle = getInjectionHandle(packetInfo);
     PNET_BUFFER_LIST injectNBL = NULL;
@@ -211,7 +211,7 @@ NTSTATUS inject_packet(pportmaster_packet_info packetInfo, int diraction, void *
         return status;
     }
 
-    if (diraction || isLoopback) {
+    if (!inbound || isLoopback) {
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
                 UNSPECIFIED_COMPARTMENT_ID, injectNBL, free_after_inject,
                 packet);
@@ -375,7 +375,7 @@ void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo
     // Experience shows that using the compartment ID can sometimes cause errors.
     // It seems safer to always use UNSPECIFIED_COMPARTMENT_ID.
     // packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
-    status = inject_packet(packetInfo, packetInfo->direction, packet, packet_len); // this call will free the packet even if the inject fails
+    status = inject_packet(packetInfo, packetInfo->direction == 1, packet, packet_len); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
         ERR("redir -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
@@ -401,7 +401,7 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
         NTSTATUS status;
         UINT16 headerLength = sizeof(IPV6_HEADER) + sizeof(ICMP_HEADER);
         UINT16 packetLength = headerLength + bytesToCopyFromOriginalPacket;
-        UINT8 reverseDirection;
+        BOOL injectIsInbound;
 
         void *icmpPacket = NULL;
         PIPV6_HEADER ipHeader;
@@ -446,8 +446,8 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
         calc_ipv6_checksum(icmpPacket, packetLength, TRUE);
 
         // Reverse diraction and inject packet
-        reverseDirection = packetInfo->direction == 1 ? 0 : 1;
-        status = inject_packet(packetInfo, reverseDirection, icmpPacket, packetLength); // this call will free the packet even if the inject fails
+        injectIsInbound = packetInfo->direction == 1 ? FALSE : TRUE;
+        status = inject_packet(packetInfo, injectIsInbound, icmpPacket, packetLength); // this call will free the packet even if the inject fails
 
         if (!NT_SUCCESS(status)) {
             ERR("send_icmp_blocked_packet ipv6 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
@@ -468,7 +468,7 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
         void *icmpPacket = NULL; 
         PIPV4_HEADER ipHeader;
         PICMP_HEADER icmpHeader;
-        UINT8 reverseDirection;
+        BOOL injectIsInbound;
 
         // Check if the body is less then 8 bytes
         if(bytesToCopyFromOriginalPacket < originalPacketLength) {
@@ -510,8 +510,8 @@ void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* original
         calc_ipv4_checksum(icmpPacket, packetLength, TRUE);
 
         // Reverse diraction and inject packet
-        reverseDirection = packetInfo->direction == 1 ? 0 : 1;
-        status = inject_packet(packetInfo, reverseDirection, icmpPacket, packetLength); // this call will free the packet even if the inject fails
+        injectIsInbound = packetInfo->direction == 1 ? FALSE : TRUE;
+        status = inject_packet(packetInfo, injectIsInbound, icmpPacket, packetLength); // this call will free the packet even if the inject fails
 
         if (!NT_SUCCESS(status)) {
             ERR("send_icmp_blocked_packet ipv4 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
@@ -538,7 +538,7 @@ void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacke
         void *tcpResetPacket;
         PIPV6_HEADER ipHeader;
         PTCP_HEADER tcpHeader;
-        UINT8 reverseDirection;
+        BOOL injectIsInbound;
 
         // allocate memory for the reset packet
         tcpResetPacket = portmaster_malloc(packetLength, FALSE);
@@ -566,8 +566,8 @@ void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacke
         calc_ipv6_checksum(tcpResetPacket, packetLength, TRUE);
         
         // Reverse diraction and inject packet
-        reverseDirection = packetInfo->direction == 1 ? 0 : 1;
-        status = inject_packet(packetInfo, reverseDirection, tcpResetPacket, packetLength); // this call will free the packet even if the inject fails
+        injectIsInbound = packetInfo->direction == 1 ? FALSE : TRUE;
+        status = inject_packet(packetInfo, injectIsInbound, tcpResetPacket, packetLength); // this call will free the packet even if the inject fails
 
         if (!NT_SUCCESS(status)) {
             ERR("send_icmp_blocked_packet ipv6 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
@@ -586,7 +586,7 @@ void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacke
         void *tcpResetPacket;
         PIPV4_HEADER ipHeader;
         PTCP_HEADER tcpHeader;
-        UINT8 reverseDirection;
+        BOOL injectIsInbound;
 
         // allocate memory for the reset packet
         tcpResetPacket = portmaster_malloc(packetLength, FALSE);
@@ -617,8 +617,8 @@ void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacke
         calc_ipv4_checksum(tcpResetPacket, packetLength, TRUE);
 
         // Reverse diraction and inject packet
-        reverseDirection = packetInfo->direction == 1 ? 0 : 1;
-        status = inject_packet(packetInfo, reverseDirection, tcpResetPacket, packetLength); // this call will free the packet even if the inject fails
+        injectIsInbound = packetInfo->direction == 1 ? FALSE : TRUE;
+        status = inject_packet(packetInfo, injectIsInbound, tcpResetPacket, packetLength); // this call will free the packet even if the inject fails
 
         if(!NT_SUCCESS(status)) {
             ERR("send_icmp_blocked_packet ipv4 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
@@ -816,7 +816,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
         calc_ipv6_checksum(packet, packet_len, TRUE);
     }
 
-    status = inject_packet(packetInfo, packetInfo->direction, packet, packet_len); // this call will free the packet even if the inject fails
+    status = inject_packet(packetInfo, packetInfo->direction == 1, packet, packet_len); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
         ERR("respondWithVerdict -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
@@ -867,7 +867,7 @@ void copy_and_inject(portmaster_packet_info* packetInfo, PNET_BUFFER nb, UINT32 
         calc_ipv6_checksum(packet, packet_len, TRUE);
     }
 
-    status = inject_packet(packetInfo, packetInfo->direction, packet, packet_len); // this call will free the packet even if the inject fails
+    status = inject_packet(packetInfo, packetInfo->direction == 1, packet, packet_len); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
         ERR("copy_and_inject -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
