@@ -49,8 +49,8 @@ The Windows Portmaster Kernel Extension is currently only developed and tested f
 Prerequesites:
 - WDK (https://docs.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk)
   - Step 1: Install Visual Studio 2022
-  - Install Windows 11, version 22H2 SDK
-  - Install Windows 11, version 22H2 WDK
+  - Step 2: Install Windows 11, version 22H2 SDK
+  - Step 3: Install Windows 11, version 22H2 WDK
     - When ask to install Visual studio extension say yes
 
 Build driver and library:
