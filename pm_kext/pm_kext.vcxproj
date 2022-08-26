@@ -109,7 +109,7 @@
       <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
     </DriverSign>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)\include;$(SolutionDir)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>false</TreatWarningAsError>
       <LanguageStandard_C>stdc11</LanguageStandard_C>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;PM_VERSION_MAJOR=$(PM_VERSION_MAJOR);PM_VERSION_MINOR=$(PM_VERSION_MINOR);PM_VERSION_REVISION=$(PM_VERSION_REVISION);PM_VERSION_BUILD=$(PM_VERSION_BUILD);DEBUG_ON;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -124,7 +124,7 @@
       <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
     </DriverSign>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)\include;$(ProjectDir)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>false</TreatWarningAsError>
       <LanguageStandard_C>stdc11</LanguageStandard_C>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;PM_VERSION_MAJOR=$(PM_VERSION_MAJOR);PM_VERSION_MINOR=$(PM_VERSION_MINOR);PM_VERSION_REVISION=$(PM_VERSION_REVISION);PM_VERSION_BUILD=$(PM_VERSION_BUILD);%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -174,24 +174,6 @@
     <ClCompile Include="src\pm_utils.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\include\packet_cache.h" />
-    <ClInclude Include="..\include\pm_api.h" />
-    <ClInclude Include="..\include\pm_callouts.h" />
-    <ClInclude Include="..\include\pm_checksum.h" />
-    <ClInclude Include="..\include\pm_common.h" />
-    <ClInclude Include="..\include\pm_debug.h" />
-    <ClInclude Include="..\include\pm_debug_dll.h" />
-    <ClInclude Include="..\include\pm_kernel.h" />
-    <ClInclude Include="..\include\pm_kernel_glue.h" />
-    <ClInclude Include="..\include\pm_linux_fix.h" />
-    <ClInclude Include="..\include\pm_netbuffer.h" />
-    <ClInclude Include="..\include\pm_register.h" />
-    <ClInclude Include="..\include\pm_utils.h" />
-    <ClInclude Include="..\include\verdict_cache.h" />
-    <ClInclude Include="..\include\version.h" />
-    <ClInclude Include="resource.h" />
-  </ItemGroup>
-  <ItemGroup>
     <ResourceCompile Include="version.rc">
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(PreprocessorDefinitions);PM_VERSION_MAJOR=$(PM_VERSION_MAJOR);PM_VERSION_MINOR=$(PM_VERSION_MINOR);PM_VERSION_REVISION=$(PM_VERSION_REVISION);PM_VERSION_BUILD=$(PM_VERSION_BUILD)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">_WIN64;_AMD64_=1;AMD64;%(PreprocessorDefinitions);PM_VERSION_MAJOR=$(PM_VERSION_MAJOR);PM_VERSION_MINOR=$(PM_VERSION_MINOR);PM_VERSION_REVISION=$(PM_VERSION_REVISION);PM_VERSION_BUILD=$(PM_VERSION_BUILD)</PreprocessorDefinitions>
@@ -200,6 +182,21 @@
   <ItemGroup>
     <Inf Include="PortmasterKext32.inx" />
     <Inf Include="PortmasterKext64.inx" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\include\pm_common.h" />
+    <ClInclude Include="..\include\pm_debug.h" />
+    <ClInclude Include="..\include\pm_debug_dll.h" />
+    <ClInclude Include="..\include\version.h" />
+    <ClInclude Include="include\packet_cache.h" />
+    <ClInclude Include="include\pm_callouts.h" />
+    <ClInclude Include="include\pm_checksum.h" />
+    <ClInclude Include="include\pm_kernel.h" />
+    <ClInclude Include="include\pm_linux_fix.h" />
+    <ClInclude Include="include\pm_netbuffer.h" />
+    <ClInclude Include="include\pm_register.h" />
+    <ClInclude Include="include\pm_utils.h" />
+    <ClInclude Include="include\verdict_cache.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

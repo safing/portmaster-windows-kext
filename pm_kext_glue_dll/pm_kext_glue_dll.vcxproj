@@ -24,21 +24,12 @@
     <ClCompile Include="src\pm_kernel_glue.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\include\packet_cache.h" />
-    <ClInclude Include="..\include\pm_api.h" />
-    <ClInclude Include="..\include\pm_callouts.h" />
-    <ClInclude Include="..\include\pm_checksum.h" />
     <ClInclude Include="..\include\pm_common.h" />
     <ClInclude Include="..\include\pm_debug.h" />
     <ClInclude Include="..\include\pm_debug_dll.h" />
-    <ClInclude Include="..\include\pm_kernel.h" />
-    <ClInclude Include="..\include\pm_kernel_glue.h" />
-    <ClInclude Include="..\include\pm_linux_fix.h" />
-    <ClInclude Include="..\include\pm_netbuffer.h" />
-    <ClInclude Include="..\include\pm_register.h" />
-    <ClInclude Include="..\include\pm_utils.h" />
-    <ClInclude Include="..\include\verdict_cache.h" />
     <ClInclude Include="..\include\version.h" />
+    <ClInclude Include="include\pm_api.h" />
+    <ClInclude Include="include\pm_kernel_glue.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
@@ -154,7 +145,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(SolutionDir)\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)\include;$(ProjectDir)\include</AdditionalIncludeDirectories>
       <LanguageStandard_C>stdc11</LanguageStandard_C>
     </ClCompile>
     <Link>
@@ -173,7 +164,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(SolutionDir)\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)\include;$(ProjectDir)\include</AdditionalIncludeDirectories>
       <LanguageStandard_C>stdc11</LanguageStandard_C>
     </ClCompile>
     <Link>

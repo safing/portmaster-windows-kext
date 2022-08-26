@@ -26,16 +26,10 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\include\packet_cache.h">
+    <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\pm_api.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\pm_callouts.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\pm_checksum.h">
+    <ClInclude Include="..\include\version.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\include\pm_common.h">
@@ -47,31 +41,10 @@
     <ClInclude Include="..\include\pm_debug_dll.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\pm_kernel.h">
+    <ClInclude Include="include\pm_api.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\pm_kernel_glue.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\pm_linux_fix.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\pm_netbuffer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\pm_register.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\pm_utils.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\verdict_cache.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="resource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\version.h">
+    <ClInclude Include="include\pm_kernel_glue.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
