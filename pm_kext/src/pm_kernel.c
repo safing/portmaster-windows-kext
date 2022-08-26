@@ -4,7 +4,7 @@
  *  Owner:       Safing ICS Technologies GmbH
  *
  *  Description: Contains implementation of Windows Driver entrypoints for Portmaster
- *               Kernel Extension, including DriverEntry, driver_device_control, init_driver_objects
+ *               Kernel Extension, including DriverEntry, driverDeviceControl, InitDriverObject
  *               Uses the Windows Filtering Platform (WFP)
  *               https://docs.microsoft.com/en-us/windows/desktop/FWP/windows-filtering-platform-start-page
  *
@@ -51,7 +51,7 @@
     Private Data and Prototypes
 ************************************/
 // Global handle to the WFP Base Filter Engine
-HANDLE filter_engine_handle = NULL;
+HANDLE filterEngineHandle = NULL;
 
 #define PORTMASTER_DEVICE_STRING L"\\Device\\" PORTMASTER_DEVICE_NAME //L"\\Device\\PortmasterKext"
 #define PORTMASTER_DOS_DEVICE_STRING L"\\??\\" PORTMASTER_DEVICE_NAME
@@ -59,165 +59,162 @@ HANDLE filter_engine_handle = NULL;
 // Driver entry and exit points
 DRIVER_INITIALIZE DriverEntry;
 DRIVER_UNLOAD DriverUnload;
-EVT_WDF_DRIVER_UNLOAD empty_evt_unload;
+EVT_WDF_DRIVER_UNLOAD emptyEventUnload;
 
 //IO CTL
-__drv_dispatchType(IRP_MJ_DEVICE_CONTROL) DRIVER_DISPATCH driver_device_control;
-NTSTATUS driver_device_control(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP Irp);
+__drv_dispatchType(IRP_MJ_DEVICE_CONTROL) DRIVER_DISPATCH driverDeviceControl;
+NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP Irp);
 
 // Initializes required WDFDriver and WDFDevice objects
-NTSTATUS init_driver_objects(DRIVER_OBJECT * driver_obj, UNICODE_STRING * registry_path,
-    WDFDRIVER * driver, WDFDEVICE * device);
+NTSTATUS InitDriverObject(DRIVER_OBJECT *driverObject, UNICODE_STRING *registryPath,
+    WDFDRIVER *driver, WDFDEVICE *device);
 
 // shared mem to communicate between callout -> device_control -> userland
-char global_buf[256];
+char globalBuf[256];
 
-// Global IO Queue for communi
-PRKQUEUE global_io_queue;
-static LARGE_INTEGER io_queue_timeout;
+// Global IO Queue for communicating
+PRKQUEUE globalIOQueue;
+static LARGE_INTEGER ioQueueTimeout;
 #define QUEUE_TIMEOUT_MILI 10000
 
 
 /************************************
    Kernel API Functions
 ************************************/
-NTSTATUS DriverEntry(IN PDRIVER_OBJECT driver_obj, IN PUNICODE_STRING registry_path) {
+NTSTATUS DriverEntry(IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING registryPath) {
     NTSTATUS status = STATUS_SUCCESS;
     WDFDRIVER driver = { 0 };
     WDFDEVICE device = { 0 };
-    DEVICE_OBJECT * wdm_device = NULL;
-    FWPM_SESSION wdf_session = { 0 };
-    BOOLEAN in_transaction = FALSE;
-    BOOLEAN callout_registered = FALSE;
+    DEVICE_OBJECT * wdmDevice = NULL;
+    FWPM_SESSION wdfSession = { 0 };
+    BOOLEAN inTransaction = FALSE;
+    BOOLEAN calloutRegistered = FALSE;
     
     initDebugStructure();
 
-    INFO("Trying to load Kernel Object '%ls', Compiledate: %s %s", PORTMASTER_DEVICE_NAME, __DATE__, __TIME__);
+    INFO("Trying to load Kernel Object '%ls', Compile date: %s %s", PORTMASTER_DEVICE_NAME, __DATE__, __TIME__);
     INFO("PM_PACKET_CACHE_SIZE = %d, PM_VERDICT_CACHE_SIZE= %d", PM_PACKET_CACHE_SIZE, PM_VERDICT_CACHE_SIZE);
-    status= initCalloutStructure();
+    status = initCalloutStructure();
     if (!NT_SUCCESS(status)) {
         status = STATUS_FAILED_DRIVER_ENTRY;
         goto Exit;
     }
 
-    status= init_netbufferpool();
+    status = initNetBufferPool();
     if (!NT_SUCCESS(status)) {
         goto Exit;
     }
 
-    status = init_driver_objects(driver_obj, registry_path, &driver, &device);
+    status = InitDriverObject(driverObject, registryPath, &driver, &device);
     if (!NT_SUCCESS(status)) {
         goto Exit;
     }
 
     // Begin a transaction to the FilterEngine. You must register objects (filter, callouts, sublayers)
     //to the filter engine in the context of a 'transaction'
-    wdf_session.flags = FWPM_SESSION_FLAG_DYNAMIC;  // <-- Automatically destroys all filters and callouts after this wdf_session ends
-    status = FwpmEngineOpen(NULL, RPC_C_AUTHN_WINNT, NULL, &wdf_session, &filter_engine_handle);
+    wdfSession.flags = FWPM_SESSION_FLAG_DYNAMIC;  // <-- Automatically destroys all filters and callouts after this wdfSession ends
+    status = FwpmEngineOpen(NULL, RPC_C_AUTHN_WINNT, NULL, &wdfSession, &filterEngineHandle);
     if (!NT_SUCCESS(status)) {
         goto Exit;
     }
-    status = FwpmTransactionBegin(filter_engine_handle, 0);
+    status = FwpmTransactionBegin(filterEngineHandle, 0);
     if (!NT_SUCCESS(status)) {
         goto Exit;
     }
-    in_transaction = TRUE;
+    inTransaction = TRUE;
 
     // Register the all Portmaster Callouts and Filters to the filter engine
-    wdm_device = WdfDeviceWdmGetDeviceObject(device);
-    status = register_wfp_stack(wdm_device);
+    wdmDevice = WdfDeviceWdmGetDeviceObject(device);
+    status = registerWFPStack(wdmDevice);
     if (!NT_SUCCESS(status)) {
         goto Exit;
     }
-    callout_registered = TRUE;
+    calloutRegistered = TRUE;
 
     // Commit transaction to the Filter Engine
-    status = FwpmTransactionCommit(filter_engine_handle);
+    status = FwpmTransactionCommit(filterEngineHandle);
     if (!NT_SUCCESS(status)) {
         goto Exit;
     }
-    in_transaction = FALSE;
+    inTransaction = FALSE;
 
     // Define this driver's unload function
-    driver_obj->DriverUnload = DriverUnload;
+    driverObject->DriverUnload = DriverUnload;
 
     // Define IO Control via WDDK's IO Request Packet structure
-    driver_obj->MajorFunction[IRP_MJ_DEVICE_CONTROL] = driver_device_control;
-
+    driverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = driverDeviceControl;
 
 
     // Cleanup and handle any errors
 Exit:
     if (!NT_SUCCESS(status)) {
-        ERR("Portmaster Kernel Extenstion failed to load, status 0x%08x", status);
-        if (in_transaction == TRUE) {
-            FwpmTransactionAbort(filter_engine_handle);
-            //_Analysis_assume_lock_not_held_(filter_engine_handle); // Potential leak if "FwpmTransactionAbort" fails
+        ERR("Portmaster Kernel Extension failed to load, status 0x%08x", status);
+        if (inTransaction == TRUE) {
+            FwpmTransactionAbort(filterEngineHandle);
+            //_Analysis_assume_lock_not_held_(filterEngineHandle); // Potential leak if "FwpmTransactionAbort" fails
         }
-        if (callout_registered == TRUE) {
-            unregister_callouts();
+        if (calloutRegistered == TRUE) {
+            unregisterCallouts();
         }
         status = STATUS_FAILED_DRIVER_ENTRY;
     } else {
-        WARN("--- Portmaster Kernel Extenstion loaded successfully ---");
+        WARN("--- Portmaster Kernel Extension loaded successfully ---");
     }
 
     return status;
 }
 
-NTSTATUS init_driver_objects(DRIVER_OBJECT * driver_obj, UNICODE_STRING * registry_path,
-    WDFDRIVER * driver, WDFDEVICE * device) {
-    NTSTATUS status = STATUS_SUCCESS;
-    WDF_DRIVER_CONFIG config = { 0 };
-    UNICODE_STRING device_name = { 0 };
-    UNICODE_STRING device_symlink = { 0 };
-    PWDFDEVICE_INIT device_init = NULL;
-    static const long n100nsTimeCount= 1000 * QUEUE_TIMEOUT_MILI;  //Unit 100ns -> 1s
+NTSTATUS InitDriverObject(DRIVER_OBJECT * driverObject, UNICODE_STRING * registryPath, WDFDRIVER * driver, WDFDEVICE * device) {
+    static const long n100nsTimeCount = 1000 * QUEUE_TIMEOUT_MILI;  //Unit 100ns -> 1s
 
-    RtlInitUnicodeString(&device_name, PORTMASTER_DEVICE_STRING);
-    RtlInitUnicodeString(&device_symlink, PORTMASTER_DOS_DEVICE_STRING);
+    UNICODE_STRING deviceName = { 0 };
+    RtlInitUnicodeString(&deviceName, PORTMASTER_DEVICE_STRING);
+
+    UNICODE_STRING deviceSymlink = { 0 };
+    RtlInitUnicodeString(&deviceSymlink, PORTMASTER_DOS_DEVICE_STRING);
 
     // Create a WDFDRIVER for this driver
+    WDF_DRIVER_CONFIG config = { 0 };
     WDF_DRIVER_CONFIG_INIT(&config, WDF_NO_EVENT_CALLBACK);
     config.DriverInitFlags = WdfDriverInitNonPnpDriver;
-    config.EvtDriverUnload = empty_evt_unload; // <-- Necessary for this driver to unload correctly
-    status = WdfDriverCreate(driver_obj, registry_path, WDF_NO_OBJECT_ATTRIBUTES, &config, driver);
+    config.EvtDriverUnload = emptyEventUnload; // <-- Necessary for this driver to unload correctly
+    NTSTATUS status = WdfDriverCreate(driverObject, registryPath, WDF_NO_OBJECT_ATTRIBUTES, &config, driver);
     if (!NT_SUCCESS(status)) {
         goto Exit;
     }
 
     // Create a WDFDEVICE for this driver
-    device_init = WdfControlDeviceInitAllocate(*driver, &SDDL_DEVOBJ_SYS_ALL_ADM_ALL);  // only admins and kernel can access device
-    if (!device_init) {
+    PWDFDEVICE_INIT deviceInit = WdfControlDeviceInitAllocate(*driver, &SDDL_DEVOBJ_SYS_ALL_ADM_ALL);  // only admins and kernel can access device
+    if (!deviceInit) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         goto Exit;
     }
 
     // Configure the WDFDEVICE_INIT with a name to allow for access from user mode
-    WdfDeviceInitSetDeviceType(device_init, FILE_DEVICE_NETWORK);
-    WdfDeviceInitSetCharacteristics(device_init, FILE_DEVICE_SECURE_OPEN, FALSE);
-    WdfDeviceInitAssignName(device_init, &device_name);
-    WdfPdoInitAssignRawDevice(device_init, &GUID_DEVCLASS_NET);
-    WdfDeviceInitSetDeviceClass(device_init, &GUID_DEVCLASS_NET);
+    WdfDeviceInitSetDeviceType(deviceInit, FILE_DEVICE_NETWORK);
+    WdfDeviceInitSetCharacteristics(deviceInit, FILE_DEVICE_SECURE_OPEN, FALSE);
+    WdfDeviceInitAssignName(deviceInit, &deviceName);
+    WdfPdoInitAssignRawDevice(deviceInit, &GUID_DEVCLASS_NET);
+    WdfDeviceInitSetDeviceClass(deviceInit, &GUID_DEVCLASS_NET);
 
-    status = WdfDeviceCreate(&device_init, WDF_NO_OBJECT_ATTRIBUTES, device);
+    status = WdfDeviceCreate(&deviceInit, WDF_NO_OBJECT_ATTRIBUTES, device);
     if (!NT_SUCCESS(status)) {
-        WdfDeviceInitFree(device_init);
+        WdfDeviceInitFree(deviceInit);
         goto Exit;
     }
-    status = WdfDeviceCreateSymbolicLink(*device, &device_symlink);
+    status = WdfDeviceCreateSymbolicLink(*device, &deviceSymlink);
     if (!NT_SUCCESS(status)) {
         ERR("failed to create device symbolic link: %d", status);
         goto Exit;
     }
     // Initialize a WDF-Queue to transmit questionable packets to userland
-    io_queue_timeout= RtlConvertLongToLargeInteger(-1 * n100nsTimeCount);
-    global_io_queue= portmaster_malloc(sizeof(KQUEUE), FALSE);
-    if (global_io_queue == NULL) {
+    ioQueueTimeout = RtlConvertLongToLargeInteger(-1 * n100nsTimeCount);
+    globalIOQueue = portmasterMalloc(sizeof(KQUEUE), FALSE);
+    if (globalIOQueue == NULL) {
         ERR("Space for Queue could not be allocated (why?)");
         goto Exit;
     }
-    KeInitializeQueue(global_io_queue, 1);  //Only one (1) thread can be satisfied concurrently while waiting for the queue
+    KeInitializeQueue(globalIOQueue, 1);  //Only one (1) thread can be satisfied concurrently while waiting for the queue
     INFO("Queue created");
     /*status= IPQueueInitialize(*device);
     if (!NT_SUCCESS(status))
@@ -231,27 +228,27 @@ Exit:
     return status;
 }
 
-VOID DriverUnload(PDRIVER_OBJECT driver_obj) {
+VOID DriverUnload(PDRIVER_OBJECT driverObject) {
     NTSTATUS status = STATUS_SUCCESS;
     UNICODE_STRING symlink = { 0 };
-    UNREFERENCED_PARAMETER(driver_obj);
+    UNREFERENCED_PARAMETER(driverObject);
 
     INFO("Starting DriverUnload");
-    status = unregister_filters();
+    status = unregisterFilters();
     if (!NT_SUCCESS(status)) {
         ERR("Failed to unregister filters, status: 0x%08x", status);
     }
-    status = unregister_callouts();
+    status = unregisterCallouts();
     if (!NT_SUCCESS(status)) {
         ERR("Failed to unregister callout, status: 0x%08x", status);
     }
     destroyCalloutStructure();
 
-    free_netbufferpool();
+    freeNetBufferPool();
     // Close handle to the WFP Filter Engine
-    if (filter_engine_handle) {
-        FwpmEngineClose(filter_engine_handle);
-        filter_engine_handle = NULL;
+    if (filterEngineHandle) {
+        FwpmEngineClose(filterEngineHandle);
+        filterEngineHandle = NULL;
     }
 
     RtlInitUnicodeString(&symlink, PORTMASTER_DOS_DEVICE_STRING);
@@ -261,39 +258,37 @@ VOID DriverUnload(PDRIVER_OBJECT driver_obj) {
     return;
 }
 
-VOID empty_evt_unload(WDFDRIVER Driver) {
+VOID emptyEventUnload(WDFDRIVER Driver) {
     UNREFERENCED_PARAMETER(Driver);
     return;
 }
 
-// driver_device_control communicates with Userland via
+// driverDeviceControl communicates with Userland via
 // IO-Request Packets (lrp)
-NTSTATUS driver_device_control(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP Irp) {
-    NTSTATUS rc;
-    PIO_STACK_LOCATION pIoStackLocation;
+NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp) {
+    UNREFERENCED_PARAMETER(pDeviceObject);
+
     //Set pBuf pointer to Irp->AssociatedIrp.SystemBuffer, which was filled in userland
     //pBuf is also used to return memory from kernel to userland
     PVOID pBuf = Irp->AssociatedIrp.SystemBuffer;
-    int IoControlCode;
 
-    pIoStackLocation = IoGetCurrentIrpStackLocation(Irp);
-    IoControlCode= pIoStackLocation->Parameters.DeviceIoControl.IoControlCode;
+    PIO_STACK_LOCATION pIoStackLocation = IoGetCurrentIrpStackLocation(Irp);
+    int IoControlCode= pIoStackLocation->Parameters.DeviceIoControl.IoControlCode;
     switch(IoControlCode) {
 #ifdef DEBUG_ON
         //Hello World with ke-us shared memory "Irp->AssociatedIrp.SystemBuffer"
         case IOCTL_HELLO: {
-            const PCHAR welcome = "Hello from kerneland.";
-            LARGE_INTEGER li;
-            long n100nsTimeCount= 70000000;
-            li= RtlConvertLongToLargeInteger(-1 * n100nsTimeCount);  //WTF?
             INFO("IOCTL HELLO");
-            rc= KeDelayExecutionThread(
+            const PCHAR welcome = "Hello from kerneland.";
+            long n100nsTimeCount = 70000000;
+            LARGE_INTEGER li = RtlConvertLongToLargeInteger(-1 * n100nsTimeCount);  //WTF?
+            int rc = KeDelayExecutionThread(
                     UserMode, //KPROCESSOR_MODE WaitMode, KernelMode
                     TRUE,   //Alterable
                     &li //Unit: 100ns
                 );
             INFO("Message received : %s", pBuf);
-            rc= KeDelayExecutionThread(
+            rc = KeDelayExecutionThread(
                     KernelMode, //KPROCESSOR_MODE WaitMode,
                     FALSE,  //Alterable
                     &li //Unit: 100ns
@@ -310,17 +305,16 @@ NTSTATUS driver_device_control(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP 
         }
 
         case IOCTL_RECV_VERDICT_REQ_POLL: {
-            int len;
             DEBUG("IOCTL_RECV_VERDICT_REQ_POLL");
-            len= strlen(global_buf);
-            if (len > 0) {
+            size_t length = strlen(globalBuf);
+            if (length > 0) {
                 RtlZeroMemory(pBuf, pIoStackLocation->Parameters.DeviceIoControl.InputBufferLength);
                 //Copy message from kernel to pBuf, so that it can be evaluated in userland
-                RtlCopyMemory(pBuf, global_buf, strlen(global_buf) );
+                RtlCopyMemory(pBuf, globalBuf, strlen(globalBuf) );
                 Irp->IoStatus.Status = STATUS_SUCCESS;
-                Irp->IoStatus.Information = strlen(global_buf);
+                Irp->IoStatus.Information = strlen(globalBuf);
                 IoCompleteRequest(Irp,IO_NO_INCREMENT);
-                RtlZeroMemory(global_buf, sizeof(global_buf));
+                RtlZeroMemory(globalBuf, sizeof(globalBuf));
                 return STATUS_SUCCESS;
             }
             Irp->IoStatus.Status = STATUS_TIMEOUT;
@@ -329,20 +323,15 @@ NTSTATUS driver_device_control(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP 
         }
 #endif
         case IOCTL_RECV_VERDICT_REQ: {
-            int len;
-            NTSTATUS rc;
-            //WDFREQUEST request;
-            PLIST_ENTRY ple;
-
             DEBUG("IOCTL_RECV_VERDICT_REQ");
-            ple= KeRemoveQueue(
-                    global_io_queue,
+            PLIST_ENTRY ple = KeRemoveQueue(
+                    globalIOQueue,
                     KernelMode, //UserMode, //KernelMode,
-                    &io_queue_timeout
+                    &ioQueueTimeout
                 );
             //Super ugly, but recommended by MS: Callers of KeRemoveQueue should test
             //whether its return value is STATUS_TIMEOUT or STATUS_USER_APC before accessing any entry members.
-            rc= (NTSTATUS) ple;
+            NTSTATUS rc = (NTSTATUS) ple;
             if (rc == STATUS_TIMEOUT) {
                 INFO("List was empty -> timeout");
                 Irp->IoStatus.Status = STATUS_TIMEOUT;
@@ -357,104 +346,102 @@ NTSTATUS driver_device_control(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP 
                 IoCompleteRequest(Irp,IO_NO_INCREMENT);
                 return STATUS_USER_APC;
             }
+
             INFO("Sending VERDICT-REQUEST to userland");
+
             {
-                PDATA_ENTRY dentry = (PDATA_ENTRY)CONTAINING_RECORD(ple, DATA_ENTRY, entry);
-                int size= sizeof(portmaster_packet_info);
+                DataEntry *dentry = (DataEntry*)CONTAINING_RECORD(ple, DataEntry, entry);
+                int size= sizeof(PortmasterPacketInfo);
 
                 RtlZeroMemory(pBuf, pIoStackLocation->Parameters.DeviceIoControl.InputBufferLength);
                 //Copy message from kernel to pBuf, so that it can be evaluated in userland
-                RtlCopyMemory(pBuf, dentry->ppacket, size);
+                RtlCopyMemory(pBuf, dentry->packet, size);
                 Irp->IoStatus.Status = STATUS_SUCCESS;
                 Irp->IoStatus.Information = size;
                 IoCompleteRequest(Irp,IO_NO_INCREMENT);
 
                 //Now that the contents of the list-entry is copied, free memory
-                portmaster_free(dentry);
+                portmasterFree(dentry);
                 return STATUS_SUCCESS;
             }
         }
         case IOCTL_SET_VERDICT: {
-            UINT32 id;
-            verdict_t verdict;
-            const char* verdict_name;
-            const char* verdict_names[]= VERDICT_NAMES;
+            PortmasterVerdictInfo *verdictInfo = (PortmasterVerdictInfo*) pBuf;
+            UINT32 id = verdictInfo->id;
+            verdict_t verdict = verdictInfo->verdict;
 
-            pportmaster_verdict_info verdict_info= (pportmaster_verdict_info) pBuf;
-            id= verdict_info->id;
-            verdict= verdict_info->verdict;
-            if (abs(verdict) < sizeof(verdict_names)) {
-                verdict_name= verdict_names[abs(verdict)];
+            const char *verdictName = NULL;
+            if (abs(verdict) < sizeof(VERDICT_NAMES)) {
+                verdictName = VERDICT_NAMES[abs(verdict)];
             } else {
-                verdict_name= "UNDEFINED";
+                verdictName = "UNDEFINED";
             }
-            INFO("Setting verdict %d for packet id %u: %s", verdict, id, verdict_name);
+            INFO("Setting verdict %d for packet id %u: %s", verdict, id, verdictName);
 
             respondWithVerdict(id, verdict);
 
             Irp->IoStatus.Status = STATUS_SUCCESS;
             Irp->IoStatus.Information = 0;
-            IoCompleteRequest(Irp,IO_NO_INCREMENT);
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_SUCCESS;
         }
 
         case IOCTL_GET_PAYLOAD: {
-            UINT32 rc;
-            void* packet;
-            size_t packet_len;
-            KLOCK_QUEUE_HANDLE lock_handle;
+            void *packet = NULL;
+            size_t packetLength = 0;
+            KLOCK_QUEUE_HANDLE lockHandle;
             // 0. Make Userland supplied Buffer useable
-            pportmaster_payload pp= (pportmaster_payload) pBuf;
+            PortmasterPayload *payload = (PortmasterPayload*) pBuf;
 
-            INFO("IOCTL_GET_PAYLOAD for id=%u, expect %u Bytes", pp->id, pp->len);
-            // 1. Locate packet in packet_cache
-            KeAcquireInStackQueuedSpinLock(&packetCacheLock, &lock_handle);
-            rc = get_packet(packetCache, pp->id, &packet, &packet_len);
+            INFO("IOCTL_GET_PAYLOAD for id=%u, expect %u Bytes", payload->id, payload->len);
+            // 1. Locate packet in packet cache
+            KeAcquireInStackQueuedSpinLock(&globalPacketCacheLock, &lockHandle);
+            UINT32 rc = getPacket(globalPacketCache, payload->id, &packet, &packetLength);
 
             // 2. Sanity Checks
             if (rc != 0) {
                 // packet id was not in packet cache
-                WARN("packet_id unknown: %u -> STATUS_OBJECT_NAME_NOT_FOUND", pp->id);
-                rc= STATUS_OBJECT_NAME_NOT_FOUND; //->Maps to Userland via GetLastError "ERROR_FILE_NOT_FOUND";
-                Irp->IoStatus.Information= 0;
+                WARN("packet_id unknown: %u -> STATUS_OBJECT_NAME_NOT_FOUND", payload->id);
+                rc = STATUS_OBJECT_NAME_NOT_FOUND; //->Maps to Userland via GetLastError "ERROR_FILE_NOT_FOUND";
+                Irp->IoStatus.Information = 0;
                 goto IOCTL_GET_PAYLOAD_EXIT;
             }
-            if ((packet_len == 0) || (!packet)) {
-                WARN("packet_id=%d, but packet_len= %u, packet=null", pp->id, packet_len);
-                rc= STATUS_INVALID_PARAMETER; //->Maps to Userland via GetLastError "??";
-                Irp->IoStatus.Information= 0;
+            if ((packetLength == 0) || (!packet)) {
+                WARN("packet_id=%d, but packetLength= %u, packet=null", payload->id, packetLength);
+                rc = STATUS_INVALID_PARAMETER; //->Maps to Userland via GetLastError "??";
+                Irp->IoStatus.Information = 0;
                 goto IOCTL_GET_PAYLOAD_EXIT;
             }
 
-            if (packet_len != pp->len && packet_len != pIoStackLocation->Parameters.DeviceIoControl.InputBufferLength) {
-                WARN("Caller supplied buffer(%u Bytes) for id=%u too small for packet(%u Bytes) -> STATUS_INSUFFICIENT_RESOURCES", pp->len, pp->id, packet_len);
-                rc= STATUS_INSUFFICIENT_RESOURCES; //->Maps to Userland via GetLastError "ERROR_NO_SYSTEM_RESOURCES"
-                Irp->IoStatus.Information= 0;
+            if (packetLength != payload->len && packetLength != pIoStackLocation->Parameters.DeviceIoControl.InputBufferLength) {
+                WARN("Caller supplied buffer(%u Bytes) for id=%u too small for packet(%u Bytes) -> STATUS_INSUFFICIENT_RESOURCES", payload->len, payload->id, packetLength);
+                rc = STATUS_INSUFFICIENT_RESOURCES; //->Maps to Userland via GetLastError "ERROR_NO_SYSTEM_RESOURCES"
+                Irp->IoStatus.Information = 0;
                 goto IOCTL_GET_PAYLOAD_EXIT;
             }
-            if (packet_len > MAX_PAYLOAD_SIZE) {
+            if (packetLength > MAX_PAYLOAD_SIZE) {
                 WARN("Oh no");
-                rc= STATUS_INSUFFICIENT_RESOURCES; //->Maps to Userland via GetLastError "ERROR_NO_SYSTEM_RESOURCES"
-                Irp->IoStatus.Information= 0;
+                rc = STATUS_INSUFFICIENT_RESOURCES; //->Maps to Userland via GetLastError "ERROR_NO_SYSTEM_RESOURCES"
+                Irp->IoStatus.Information = 0;
                 goto IOCTL_GET_PAYLOAD_EXIT;
             }
 
             // 3. Copy Packet to user supplied buffer
-            rc= STATUS_SUCCESS;
-            INFO("Retrieved packet for id=%u, len=%u, rc=%d", pp->id, packet_len, rc);
-            //RtlZeroMemory(pBuf, packet_len);
-            RtlCopyMemory(pBuf, packet, packet_len);
+            rc = STATUS_SUCCESS;
+            INFO("Retrieved packet for id=%u, len=%u, rc=%d", payload->id, packetLength, rc);
+            //RtlZeroMemory(pBuf, packetLength);
+            RtlCopyMemory(pBuf, packet, packetLength);
 
             //Finish the I/O operation by simply completing the packet and returning
             //the same status as in the packet itself.
-            Irp->IoStatus.Information = packet_len;
+            Irp->IoStatus.Information = packetLength;
 
 IOCTL_GET_PAYLOAD_EXIT:
-            KeReleaseInStackQueuedSpinLock(&lock_handle);
+            KeReleaseInStackQueuedSpinLock(&lockHandle);
             //Irp->IoStatus.Information is the ONLY way to transfer status information to userland
-            //We need to share it with "Bytes Transfered".  That is why we ignore the (unsigned) type
+            //We need to share it with "Bytes Transferred".  That is why we ignore the (unsigned) type
             //of Irp->IoStatus.Information and use the first (sign) Bit to distinguish between
-            // (0) Bytes Transfered and
+            // (0) Bytes Transferred and
             // (1) Status
             //Irp->IoStatus.Status is only used internally and cannot be accessed by userland
             //Latest Enlightenments proof this hypothesis wrong: There seems to be some mapping
@@ -467,7 +454,7 @@ IOCTL_GET_PAYLOAD_EXIT:
         default: {
             ERR("Don't know how to deal with IoControlCode 0x%x", IoControlCode);
             Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
-            IoCompleteRequest(Irp,IO_NO_INCREMENT);
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_NOT_IMPLEMENTED;
         }
     }

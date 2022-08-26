@@ -19,6 +19,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 #include "pm_common.h"
 //Logger Definitions
@@ -37,8 +38,8 @@
  * not need to know about it.
  *
  */
-HANDLE handle;
-int logLevel= LEVEL_ERROR;
+HANDLE deviceHandle = INVALID_HANDLE_VALUE;
+int logLevel = LEVEL_DEBUG;
 
 /****************************************************************************/
 /* Portmaster  API                                                          */
@@ -49,62 +50,55 @@ int logLevel= LEVEL_ERROR;
  * This is a dummy function, since initialization is done in PortmasterStart().
  */
 extern _EXPORT int PortmasterInit() {
-    int rc= 0;
-    logLevel= LEVEL_ERROR;
     INFO("Portmaster Kernel Extension initialized");
-    return rc;
+    return 0;
 }
 
 /*
  * Start intercepting packets.
  */
-extern _EXPORT int PortmasterStart(const char* portmaster_kext_path) {
-    int rc= 0;
-    handle= INVALID_HANDLE_VALUE;
-
-    handle= portmaster_kernel_open(portmaster_kext_path);
-    if (handle == INVALID_HANDLE_VALUE) {
-        rc= GetLastError();
+extern _EXPORT int PortmasterStart(const char* portmasterKextPath) {
+    deviceHandle = portmasterKernelOpen(portmasterKextPath);
+    if (deviceHandle == INVALID_HANDLE_VALUE) {
+        DWORD rc = GetLastError();
         ERR("Failed to open the device (%d)", rc);
         return rc;
     }
     INFO("OPENED and STARTED Portmaster Kernel Extension");
-    return rc;
+    return 0;
 }
 
 /*
  * Stops the Portmaster
  */
 extern _EXPORT int PortmasterStop() {
-    int rc= 0;
+    int rc = 0;
 
     INFO("Stopping Service now");
-    rc= CloseHandle(handle);
+    rc = CloseHandle(deviceHandle);
     INFO("CloseHandle to Portmaster Kernel Extension returned= %d (nonzero is success)", rc);
     if (rc == 0)
     {
-        rc= GetLastError();
+        rc = GetLastError();
         WARN("GetLastError= 0x%x", rc);
     }
     else 
     {
-        rc= 0;
+        rc = 0;
     }      
     system("sc stop " PORTMASTER_DEVICE_NAME_C);  //This is a question of taste, but it is a robust and solid solution
     return rc;
 }
 
-extern _EXPORT int PortmasterRecvVerdictRequest(pportmaster_packet_info packet_info) {
-    int rc= 0;
-    pportmaster_packet_info Ppacket_info;
+extern _EXPORT int PortmasterRecvVerdictRequest(PortmasterPacketInfo *packetInfo) {
+    // Check for verdict request
     char *welcome = "NA";
     DWORD dwBytesRead = 0;
-    char ReadBuffer[sizeof(portmaster_packet_info) +1] = {0};
+    char ReadBuffer[sizeof(PortmasterPacketInfo) + 1] = {0};
 
-
-    rc= DeviceIoControl(handle, IOCTL_RECV_VERDICT_REQ, welcome, strlen(welcome), ReadBuffer, sizeof(ReadBuffer), &dwBytesRead, NULL);
-    if (rc == FALSE) {
-        rc= GetLastError();
+    int rc = DeviceIoControl(deviceHandle, IOCTL_RECV_VERDICT_REQ, welcome, (DWORD)strlen(welcome), ReadBuffer, sizeof(ReadBuffer), &dwBytesRead, NULL);
+    if (rc == false) {
+        rc = GetLastError();
         WARN("DeviceIoControl did not succeed: GetLastError=%d, dwBytesRead=0x%X", rc, dwBytesRead);
         switch (rc) {
             default:
@@ -113,36 +107,36 @@ extern _EXPORT int PortmasterRecvVerdictRequest(pportmaster_packet_info packet_i
         }
     }
 
-    if ((rc == TRUE) && (dwBytesRead > 0)) {
-        INFO("Bytes read : %d, rc= %d", dwBytesRead, rc);
-        Ppacket_info= (pportmaster_packet_info)ReadBuffer;
-        packetToString(Ppacket_info);
-        memcpy(packet_info, Ppacket_info, sizeof(portmaster_packet_info));
+    // Process verdict request
+    if ((rc == true) && (dwBytesRead > 0)) {
+        INFO("Bytes read : %d, rc = %d", dwBytesRead, rc);
+        PortmasterPacketInfo *PacketInfoFromDevice = (PortmasterPacketInfo*)ReadBuffer;
+        packetToString(PacketInfoFromDevice);
+        memcpy(packetInfo, PacketInfoFromDevice, sizeof(PortmasterPacketInfo));
         return ERROR_SUCCESS;
     } else {
-        rc= GetLastError();
+        rc = GetLastError();
         WARN("DeviceIoControl returned TRUE but no bytes received, GetLastError=%d", rc);
-        memset(packet_info, 0, sizeof(portmaster_packet_info));
+        memset(packetInfo, 0, sizeof(PortmasterPacketInfo));
         return ERROR_INVALID_DATA;
     }
 
 }
 
 extern _EXPORT int PortmasterSetVerdict(UINT32 packet_id, verdict_t verdict) {
-    int rc= 0;
-    portmaster_verdict_info verdict_info;
-    char* verdict_info_buffer= (char*) &verdict_info;
+    PortmasterVerdictInfo verdictInfo = {0};
+    char* verdictInfoBuffer = (char*) &verdictInfo;
     DWORD dwBytesRead = 0;
     char ReadBuffer[100] = {0}; //unused
 
-    //Construct verdict_info
-    verdict_info.id= packet_id;
-    verdict_info.verdict= verdict;
+    //Construct verdictInfo
+    verdictInfo.id = packet_id;
+    verdictInfo.verdict = verdict;
 
-    rc= DeviceIoControl(handle, IOCTL_SET_VERDICT, verdict_info_buffer, sizeof(portmaster_verdict_info), ReadBuffer, sizeof(ReadBuffer), &dwBytesRead, NULL);
+    int rc = DeviceIoControl(deviceHandle, IOCTL_SET_VERDICT, verdictInfoBuffer, sizeof(PortmasterVerdictInfo), ReadBuffer, sizeof(ReadBuffer), &dwBytesRead, NULL);
     INFO("IOCTL_SET_VERDICT returned %d", rc);
     if (rc == FALSE) {
-        rc= GetLastError();
+        rc = GetLastError();
         WARN("DeviceIoControl did not succeed: GetLastError=%d, dwBytesRead=0x%X", rc, dwBytesRead);
         switch (rc) {
             default:
@@ -154,17 +148,16 @@ extern _EXPORT int PortmasterSetVerdict(UINT32 packet_id, verdict_t verdict) {
 }
 
 extern _EXPORT UINT32 PortmasterGetPayload(UINT32 packet_id, UINT8* buf, UINT32* len) {
-    int rc=0x11;
     DWORD bytesRead = 0;
 
-    //Create struct to pass info to kernel
-    portmaster_payload pp;
-    pp.id= packet_id;
-    pp.len= *len;
+    // Create struct to pass info to kernel
+    PortmasterPayload payload = {0};
+    payload.id = packet_id;
+    payload.len = *len;
 
-    rc= DeviceIoControl(handle, IOCTL_GET_PAYLOAD, (UINT8*) &pp, sizeof(portmaster_payload), buf, *len, &bytesRead, NULL);
-    if (rc==FALSE) {
-        rc= GetLastError();
+    int rc = DeviceIoControl(deviceHandle, IOCTL_GET_PAYLOAD, (UINT8*) &payload, sizeof(PortmasterPayload), buf, *len, &bytesRead, NULL);
+    if (rc == false) {
+        rc = GetLastError();
         WARN("DeviceIoControl did not succeed: GetLastError=%d, bytesRead=0x%X", rc, bytesRead);
         switch (rc) {
             case ERROR_NO_SYSTEM_RESOURCES:
@@ -179,28 +172,27 @@ extern _EXPORT UINT32 PortmasterGetPayload(UINT32 packet_id, UINT8* buf, UINT32*
         }
     }
 
-    rc= ERROR_SUCCESS;
-    *len= bytesRead;
+    *len = bytesRead;
     INFO("payload: id=%u, rc=0x%X, len=%u", packet_id, rc, *len);
 
-    return rc;
+    return ERROR_SUCCESS;
 }
 
 
-#ifdef DEBUG_ON
+#ifdef DEBUGON
 
 /*
 * Blocks the application till unknown packet is received.
-* Returns the packet and expectes the application to return a verdict,
+* Returns the packet and expects the application to return a verdict,
 * like accept, block, drop, permanentAccept ...
 */
-extern _EXPORT int PortmasterRecvVerdictRequestHello(pportmaster_packet_info packet_info) {
-    int rc= 0;
+extern _EXPORT int PortmasterRecvVerdictRequestHello(PortmasterPacketInfo *packetInfo) {
+    int rc = 0;
     char *welcome = "Hello from userland.";
     DWORD dwBytesRead = 0;
     char ReadBuffer[50] = {0};
 
-    DeviceIoControl(handle, IOCTL_HELLO, welcome, strlen(welcome), ReadBuffer, sizeof(ReadBuffer), &dwBytesRead, NULL);
+    DeviceIoControl(deviceHandle, IOCTL_HELLO, welcome, (DWORD)strlen(welcome), ReadBuffer, sizeof(ReadBuffer), &dwBytesRead, NULL);
     INFO("Message received from kerneland : %s", ReadBuffer);
     INFO("Bytes read : %d", dwBytesRead);
 

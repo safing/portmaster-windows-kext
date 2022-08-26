@@ -21,55 +21,54 @@
 #define uint64_t UINT64
 #endif
 
-typedef struct packet_cache_item packet_cache_item_t;
-struct packet_cache_item {
-    packet_cache_item_t* prev;
-    packet_cache_item_t* next;
+typedef struct PacketCacheItem {
+    struct PacketCacheItem *prev;
+    struct PacketCacheItem *next;
 
-    uint32_t packet_id;
-    pportmaster_packet_info packet_info;
-    void* packet;
-    size_t packet_len;
+    uint32_t packetID;
+    PortmasterPacketInfo *packetInfo;
+    void *packet;
+    size_t packetLength;
     /*
     COMPARTMENT_ID compartmentId;
     IF_INDEX interfaceIndex;
     IF_INDEX subInterfaceIndex;
     */
-};
+} PacketCacheItem;
 
-typedef struct packet_cache {
+typedef struct  {
     uint32_t size;
-    uint32_t max_size;
-    uint32_t next_packet_id;
-    packet_cache_item_t* head;
-    packet_cache_item_t* tail;
-} packet_cache_t;
+    uint32_t maxSize;
+    uint32_t nextPacketID;
+    PacketCacheItem *head;
+    PacketCacheItem *tail;
+} PacketCache;
 
 
-extern packet_cache_t* packetCache;
-extern KSPIN_LOCK packetCacheLock;
+extern PacketCache *globalPacketCache;
+extern KSPIN_LOCK globalPacketCacheLock;
 
 
 /**
  * @brief Initializes the packet cache
  *
- * @par    max_size     = size of cache
- * @par    packet_cache = returns new packet_cache_t
+ * @par    maxSize     = size of cache
+ * @par    packetCache = returns new packet_cache_t
  * @return error code
  *
  */
-int create_packet_cache(uint32_t max_size, packet_cache_t** packet_cache);
+int createPacketCache(uint32_t maxSize, PacketCache **packetCache);
 
 /**
  * @brief Cleans the packet cache
  *
- * @par    packet_cache = packet_cache to use
- * @par    packet_info  = returns PORTMASTER_PACKET_INFO to free
- * @par    packet       = returns void to free
+ * @par    packetCache = packet_cache to use
+ * @par    packetInfo  = returns PORTMASTER_PACKET_INFO to free
+ * @par    packet      = returns void to free
  * @return error code
  *
  */
-int clean_packet_cache(packet_cache_t* packet_cache, pportmaster_packet_info * packet_info, void** packet);
+int cleanPacketCache(PacketCache *packetCache, PortmasterPacketInfo **packetInfo, void **packet);
 
 /**
  * @brief Tears down the packet cache
@@ -78,40 +77,40 @@ int clean_packet_cache(packet_cache_t* packet_cache, pportmaster_packet_info * p
  * @return error code
  *
  */
-int teardown_packet_cache(packet_cache_t* packet_cache);
+int teardownPacketCache(PacketCache *packetCache);
 
 /**
  * @brief Registers a packet
  *
- * @par    packet_cache = packet_cache to use
- * @par    packet_info  = pointer to packet_info
+ * @par    packetCache = packetCache to use
+ * @par    packetInfo  = pointer to packetInfo
  * @par    packet       = pointer to packet
  * @return new packet ID
  *
  */
-uint32_t register_packet(packet_cache_t* packet_cache, pportmaster_packet_info  packet_info, void* packet, size_t packet_len);
+uint32_t registerPacket(PacketCache *packetCache, PortmasterPacketInfo *packetInfo, void *packet, size_t packetLength);
 
 /**
- * @brief Retrieves and deletes a packet from list, if it exsists.
+ * @brief Retrieves and deletes a packet from list, if it exists.
  *
- * @par    packet_cache = packet_cache to use
- * @par    packet_id    = registered packet ID
- * @par    packet_info  = double pointer for packet_info return
+ * @par    packetCache  = packetCache to use
+ * @par    packetID     = registered packet ID
+ * @par    packetCache  = double pointer for packetInfo return
  * @par    packet       = double pointer for packet return
  * @return error code
  *
  */
-int retrieve_packet(packet_cache_t* packet_cache, uint32_t packet_id, pportmaster_packet_info * packet_info, void** packet, size_t* packet_len);
+int retrievePacket(PacketCache *packetCache, uint32_t packetID, PortmasterPacketInfo **packetInfoPtr, void **packet, size_t *packetLength);
 
 /**
- * @brief Retrieves a packet from list, if it exsists.
+ * @brief Retrieves a packet from list, if it exists.
  *
- * @par    packet_cache = packet_cache to use
- * @par    packet_id    = registered packet ID
- * @par    packet       = double pointer for packet return
+ * @par    packetCache = packetCache to use
+ * @par    packetID    = registered packet ID
+ * @par    packet      = double pointer for packet return
  * @return error code
  *
  */
-int get_packet(packet_cache_t* packet_cache, uint32_t packet_id, void** packet, size_t* packet_len);
+int getPacket(PacketCache *packetCache, uint32_t packetID, void **packet, size_t *packetLength);
 
 #endif

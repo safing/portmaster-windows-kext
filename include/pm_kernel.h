@@ -36,16 +36,16 @@
 #include <ntstrsafe.h>
 #include "pm_common.h"
 
-//extern WDFQUEUE global_io_queue;
-extern PRKQUEUE global_io_queue;
+//extern WDFQUEUE globalIOQueue;
+extern PRKQUEUE globalIOQueue;
 
-typedef struct DATA_ENTRY {
+typedef struct {
     LIST_ENTRY entry;
-    pportmaster_packet_info ppacket;
-} DATA_ENTRY, *PDATA_ENTRY;
+    PortmasterPacketInfo *packet;
+} DataEntry;
 
 extern NTSTATUS IPQueueInitialize(WDFDEVICE Device);
-extern VOID QueueEvtIoRead(IN WDFQUEUE Queue, IN WDFREQUEST Request, IN size_t Length);
-extern VOID QueueEvtIoWrite(IN WDFQUEUE Queue, IN WDFREQUEST Request, IN size_t Length);
+extern VOID QueueEvtIoRead(IN WDFQUEUE queue, IN WDFREQUEST request, IN size_t length);
+extern VOID QueueEvtIoWrite(IN WDFQUEUE queue, IN WDFREQUEST request, IN size_t length);
 
 #endif // include guard

@@ -13,41 +13,41 @@
 
 #define PORTMASTER_TAG                           'saMP'
 
-extern PVOID portmaster_malloc(SIZE_T size, BOOL paged);
-extern VOID portmaster_free(PVOID ptr);
+void *portmasterMalloc(size_t size, BOOL paged);
+void portmasterFree(void *ptr);
 
-extern VOID calc_ipv4_checksum(void* data, int len, BOOL calc_transport);
-extern VOID calc_ipv6_checksum(void* data, int len, BOOL calc_transport);
+void calcIPv4Checksum(void *data, size_t len, BOOL calcTransport);
+void calcIPv6Checksum(void *data, size_t len, BOOL calcTransport);
 
 /**
- * @brief Compares two portmaster_packet_info for full equality
+ * @brief Compares two PortmasterPacketInfo for full equality
  *
- * @par    a  = portmaster_packet_info to compare
- * @par    b  = portmaster_packet_info to compare
+ * @par    a  = Pointer to PortmasterPacketInfo to compare
+ * @par    b  = Pointer to PortmasterPacketInfo to compare
  * @return equality (bool)
  *
  */
-extern int compare_full_packet_info(portmaster_packet_info* a, portmaster_packet_info* b);
+BOOL compareFullPacketInfo(PortmasterPacketInfo *a, PortmasterPacketInfo *b);
 
 /**
- * @brief Compares two portmaster_packet_info for local adress equality
+ * @brief Compares two PortmasterPacketInfo for local address equality
  *
- * @par    a  = portmaster_packet_info to compare
- * @par    b  = portmaster_packet_info to compare
+ * @par    a  = Pointer to PortmasterPacketInfo to compare
+ * @par    b  = Pointer to PortmasterPacketInfo to compare
  * @return equality (bool)
  *
  */
-extern int compare_reverse_redir_packet_info(portmaster_packet_info* original, portmaster_packet_info* current);
+BOOL compareReverseRedirPacketInfo(PortmasterPacketInfo *original, PortmasterPacketInfo *current);
 
 /**
  * @brief Compares two portmaster_packet_info for remote address equality
  *
- * @par    a  = portmaster_packet_info to compare
- * @par    b  = portmaster_packet_info to compare
+ * @par    a  = Pointer to PortmasterPacketInfo to compare
+ * @par    b  = Pointer to PortmasterPacketInfo to compare
  * @return equality (bool)
  *
  */
-extern int compare_remote_packet_info(portmaster_packet_info* a, portmaster_packet_info* b);
+int compareRemotePacketInfo(PortmasterPacketInfo *a, PortmasterPacketInfo *b);
 
 /**
  * @brief Checks if the IPv4 address is a loopback address
@@ -56,7 +56,7 @@ extern int compare_remote_packet_info(portmaster_packet_info* a, portmaster_pack
  * @return is loopback (bool)
  *
  */
-BOOL is_ipv4_loopback(UINT32 addr);
+BOOL isIPv4Loopback(UINT32 addr);
 
 /**
  * @brief Checks if the IPv6 address is a loopback address
@@ -65,16 +65,16 @@ BOOL is_ipv4_loopback(UINT32 addr);
  * @return is loopback (bool)
  *
  */
-BOOL is_ipv6_loopback(UINT32 *addr);
+BOOL isIPv6Loopback(UINT32 *addr);
 
 /**
- * @brief Checks if the paket has loopack ip address
+ * @brief Checks if the packet has loopback ip address
  *
  * @par    packet = the packet to be checked 
  * @return is loopback (bool)
  *
  */
-BOOL is_packet_loopback(pportmaster_packet_info packet);
+BOOL isPacketLoopback(PortmasterPacketInfo *packet);
 
 #endif
 
@@ -83,8 +83,8 @@ BOOL is_packet_loopback(pportmaster_packet_info packet);
 
 #ifdef BUILD_ENV_DRIVER
 
-#define _ALLOC(element_size, n_of_elements) portmaster_malloc(element_size*n_of_elements, FALSE)
-#define _FREE(p_element) portmaster_free(p_element)
+#define _ALLOC(element_size, n_of_elements) portmasterMalloc(element_size*n_of_elements, FALSE)
+#define _FREE(p_element) portmasterFree(p_element)
 
 #else
 

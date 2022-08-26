@@ -39,8 +39,8 @@
 #include "pm_kernel.h"
 #include "pm_callouts.h"
 
-NTSTATUS register_wfp_stack(DEVICE_OBJECT* wdm_device);
-NTSTATUS unregister_filters();
-NTSTATUS unregister_callouts();
+NTSTATUS registerWFPStack(DEVICE_OBJECT* wdmDevice);
+NTSTATUS unregisterFilters();
+NTSTATUS unregisterCallouts();
 
 #endif // include guard

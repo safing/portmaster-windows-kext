@@ -38,7 +38,7 @@ typedef struct {
     UINT32 interfaceIndex;              //eth0, ...
     UINT32 subInterfaceIndex;
     UINT32 packetSize;
-} portmaster_packet_info, *pportmaster_packet_info;
+} PortmasterPacketInfo;
 
 
 /*
@@ -62,7 +62,7 @@ typedef struct {
     UINT16 Checksum;
     UINT32 SrcAddr;
     UINT32 DstAddr;
-} IPV4_HEADER, *PIPV4_HEADER;
+} IPv4Header;
 
 /*
  * IPv6 Header.
@@ -78,7 +78,7 @@ typedef struct {
     UINT8  HopLimit;
     UINT32 SrcAddr[4];
     UINT32 DstAddr[4];
-} IPV6_HEADER, *PIPV6_HEADER;
+} IPv6Header;
 
 /*
  * TCP Header.
@@ -99,7 +99,7 @@ typedef struct {
     UINT16 Reserved2:2;
     UINT16 Window;
     UINT16 Checksum;
-} TCP_HEADER, *PTCP_HEADER;
+} TCPHeader;
 
 /*
  * UDP Header.
@@ -109,7 +109,7 @@ typedef struct {
     UINT16 DstPort;
     UINT16 Length;
     UINT16 Checksum;
-} UDP_HEADER, *PUDP_HEADER;
+} UDPHeader;
 
 /*
 * ICMP Header (used also for ICMPv6)
@@ -122,7 +122,7 @@ typedef struct
   UINT16 Checksum;
   UINT32 unused;
   // This header is not complete for all ICMP packets variants
-}ICMP_HEADER, *PICMP_HEADER;
+}ICMPHeader;
 
 /*
  * Verdict can be permanent or temporary for one specific packet.
@@ -136,13 +136,13 @@ typedef INT8 verdict_t;
 #define PORTMASTER_VERDICT_DROP 4               // Block packets with RST or FIN
 #define PORTMASTER_VERDICT_REDIR_DNS 5          // Redirect packets to DNS
 #define PORTMASTER_VERDICT_REDIR_TUNNEL 6       // Redirect packets to tunnel.
-#define VERDICT_NAMES { "PORTMASTER_VERDICT_ERROR",\
-                        "PORTMASTER_VERDICT_GET",\
-                        "PORTMASTER_VERDICT_ACCEPT",\
-                        "PORTMASTER_VERDICT_BLOCK",\
-                        "PORTMASTER_VERDICT_DROP",\
-                        "PORTMASTER_VERDICT_REDIR_DNS",\
-                        "PORTMASTER_VERDICT_REDIR_TUNNEL"}
+static const char* VERDICT_NAMES[] = { "PORTMASTER_VERDICT_ERROR",
+                                 "PORTMASTER_VERDICT_GET",
+                                 "PORTMASTER_VERDICT_ACCEPT",
+                                 "PORTMASTER_VERDICT_BLOCK",
+                                 "PORTMASTER_VERDICT_DROP",
+                                 "PORTMASTER_VERDICT_REDIR_DNS",
+                                 "PORTMASTER_VERDICT_REDIR_TUNNEL" };
 
 /*
  * CACHE SIZES for packet and verdict cache
@@ -165,7 +165,7 @@ typedef INT8 verdict_t;
 typedef struct {
     UINT32 id;          //ID from RegisterPacket
     verdict_t verdict;
-} portmaster_verdict_info, *pportmaster_verdict_info;
+} PortmasterVerdictInfo;
 
 /*
  * Container for Payload
@@ -173,7 +173,7 @@ typedef struct {
 typedef struct {
     UINT32 id;
     UINT32 len;         //preset with maxlen of payload from caller -> set with acutal len of payload from receiver
-} portmaster_payload, *pportmaster_payload;
+} PortmasterPayload;
 
 
 /*
@@ -221,7 +221,7 @@ CTL_CODE(SIOCTL_TYPE, 0x804, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
 #define IPv4_LOCALHOST_IP_NETWORK_ORDER 0x0100007f
 
 #define IPv6_LOCALHOST_PART4               0x1
-#define IPv6_LOCALHOST_PART4_NETOWRK_ORDER 0x01000000
+#define IPv6_LOCALHOST_PART4_NETWORK_ORDER 0x01000000
 
 #define PORT_DNS 53
 #define PORT_DNS_NBO 0x3500

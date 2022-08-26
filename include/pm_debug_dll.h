@@ -17,10 +17,10 @@
 /* Portmaster Helper Prototypes                                             */
 /****************************************************************************/
 #ifdef DEBUG_ON
-    extern pportmaster_packet_info createIPv4PacketInfo(pportmaster_packet_info packet_info);
-    extern pportmaster_packet_info createIPv6PacketInfo1(pportmaster_packet_info packet_info);
-    extern pportmaster_packet_info createIPv6PacketInfo2(pportmaster_packet_info packet_info);
-    extern void packetToString(pportmaster_packet_info packet_info);	
+    extern PortmasterPacketInfo *createIPv4PacketInfo(PortmasterPacketInfo *packetInfo);
+    extern PortmasterPacketInfo *createIPv6PacketInfo1(PortmasterPacketInfo *packetInfo);
+    extern PortmasterPacketInfo *createIPv6PacketInfo2(PortmasterPacketInfo *packetInfo);
+    extern void packetToString(PortmasterPacketInfo *packetInfo);	
 
 #else
     #define createIPv4PacketInfo(...)   {}

@@ -112,7 +112,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>false</TreatWarningAsError>
       <LanguageStandard_C>stdc11</LanguageStandard_C>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;PM_VERSION_MAJOR=$(PM_VERSION_MAJOR);PM_VERSION_MINOR=$(PM_VERSION_MINOR);PM_VERSION_REVISION=$(PM_VERSION_REVISION);PM_VERSION_BUILD=$(PM_VERSION_BUILD);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;PM_VERSION_MAJOR=$(PM_VERSION_MAJOR);PM_VERSION_MINOR=$(PM_VERSION_MINOR);PM_VERSION_REVISION=$(PM_VERSION_REVISION);PM_VERSION_BUILD=$(PM_VERSION_BUILD);DEBUG_ON;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <UseFullPaths>false</UseFullPaths>
     </ClCompile>
     <Link>

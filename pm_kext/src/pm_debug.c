@@ -12,7 +12,7 @@
 #include "pm_common.h"
 #include "pm_debug.h"
 
-int logLevel= LEVEL_INFO;
+int logLevel = LEVEL_INFO;
 
 #ifdef DEBUG_ON
 #define _BUILD "DEBUG"
@@ -21,20 +21,20 @@ static KSPIN_LOCK debugLock;
 
 void __DEBUG(char* name, int level, int line, char* format, ...) {
     if (level >= logLevel) {
-        KLOCK_QUEUE_HANDLE lock_handle;
+        KLOCK_QUEUE_HANDLE lockHandle;
         //Locking is required because we want to use static variables here for better performance
-        KeAcquireInStackQueuedSpinLock(&debugLock, &lock_handle);
+        KeAcquireInStackQueuedSpinLock(&debugLock, &lockHandle);
         {
             va_list args;
-            static char buf[DEBUG_BUFSIZE+1];
-            static char *level_names[]= {"DEBUG", "INFO", "WARN", "ERROR", "FATAL"};
+            static char buf[DEBUG_BUFSIZE + 1];
+            static char *levelNames[] = {"DEBUG", "INFO", "WARN", "ERROR", "FATAL"};
             va_start(args, format);
             RtlStringCbVPrintfA(buf, DEBUG_BUFSIZE, format, args);
 
-            DbgPrint("%s %s L%04d: %s\n", name, level_names[level], line, buf);
+            DbgPrint("%s %s L%04d: %s\n", name, levelNames[level], line, buf);
             va_end(args);
         }
-        KeReleaseInStackQueuedSpinLock(&lock_handle);
+        KeReleaseInStackQueuedSpinLock(&lockHandle);
     }
 }
 
@@ -43,38 +43,35 @@ void ipToString(int *ip, BOOL ipV6, char* buf, int size) {
         RtlStringCbPrintfA(buf, size, "%08x:%08x:%08x:%08x", ip[0], ip[1], ip[2], ip[3]);
     } else {
         int a,b,c,d;
-        a= (ip[0] >> 24) & 0xff;
-        b= (ip[0] >> 16) & 0xff;
-        c= (ip[0] >> 8) & 0xff ;
-        d= ip[0] & 0xff;
+        a = (ip[0] >> 24) & 0xff;
+        b = (ip[0] >> 16) & 0xff;
+        c = (ip[0] >> 8) & 0xff ;
+        d = ip[0] & 0xff;
         RtlStringCbPrintfA(buf, size, "%u.%u.%u.%u", d, c, b, a);
     }
     return;
 }
 
-void print_ip_header(char* buf, unsigned long buf_len, char* data, unsigned long data_len) {
-    unsigned long current_pos, i;
-    current_pos= 0;
-    i= 0;
+void printIpHeader(char* buf, unsigned long bufLength, char* data, unsigned long dataLength) {
+    UNREFERENCED_PARAMETER(dataLength);
+    size_t i = 0;
     RtlStringCbPrintfA(buf, 250, "%3u %3u %3u %3u", data[i]& 0xFF, data[i+1]& 0xFF, data[i+2]& 0xFF, data[i+3]& 0xFF);
-    return;
-    for (i= 0; i < data_len; i++) {
-        current_pos= i*3;
-        if (current_pos >= (buf_len-3)) {
-            RtlStringCbPrintfA(buf+current_pos-3, 3, "%3s", "...");
-            buf[buf_len -1]= 0;
+    /* for (i = 0; i < dataLength; i++) {
+        currentPos= i * 3;
+        if (currentPos >= (bufLength - 3)) {
+            RtlStringCbPrintfA(buf + currentPos - 3, 3, "%3s", "...");
+            buf[bufLength - 1]= 0;
             return;
         }
-        RtlStringCbPrintfA(buf+current_pos, 3, "%3u %3u %3u %3u", data[i]& 0xFF, data[i+1]& 0xFF, data[i+2]& 0xFF, data[i+3]& 0xFF);
-        buf[buf_len -1]= 0;
-    }
-    return;
+        RtlStringCbPrintfA(buf + currentPos, 3, "%3u %3u %3u %3u", data[i]& 0xFF, data[i+1]& 0xFF, data[i+2]& 0xFF, data[i+3]& 0xFF);
+        buf[bufLength - 1]= 0;
+    }*/
 }
 
 
-char* print_ipv4_packet(void* packet) {
-    static char buf[256]; //this is NOT threadsafe but quick.
-    PIPV4_HEADER p= (PIPV4_HEADER) packet;
+char* printIpv4Packet(void* packet) {
+    static char buf[256]; // this is NOT threadsafe but quick.
+    IPv4Header *p = (IPv4Header*) packet;
 
     RtlStringCbPrintfA(buf, sizeof(buf), "ipv4 packet Ver=%d, Prot=%d, Check=0x%02x  Src=%d.%d.%d.%d, Dst=%d.%d.%d.%d",
         p->Version,
@@ -86,7 +83,7 @@ char* print_ipv4_packet(void* packet) {
     return buf;
 }
 
-char* print_packet_info(pportmaster_packet_info packetInfo) {
+char* printPacketInfo(PortmasterPacketInfo *packetInfo) {
     static char buf[512];  //this is NOT threadsafe but quick.
 
     if (packetInfo->ipV6 == 1) {

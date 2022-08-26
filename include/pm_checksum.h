@@ -15,12 +15,12 @@
 #include "pm_kernel.h"
 #include "pm_debug.h"
 
-extern UINT32 checksum_add(void* data, int len);
-extern UINT16 checksum_finish(UINT32 sum);
+UINT32 checksumAdd(void* data, size_t len);
+UINT16 checksumFinish(UINT32 sum);
 
-extern VOID calc_ipv4_checksum(void* data, int len, BOOL calc_transport);
-extern VOID calc_ipv6_checksum(void* data, int len, BOOL calc_transport);
-extern ULONG calc_ipv4_header_size(void* data, size_t len);
-extern ULONG calc_ipv6_header_size(void* data, size_t len, UINT8* return_protocol);
+void calcIPv4Checksum(void *data, size_t len, BOOL calcTransport);
+void calcIPv6Checksum(void *data, size_t len, BOOL calcTransport);
+size_t calcIPv4HeaderSize(void *data, size_t len);
+size_t calcIPv6HeaderSize(void *data, size_t len, UINT8* returnProtocol);
 
 #endif  //include guard

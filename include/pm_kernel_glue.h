@@ -28,8 +28,8 @@
 #endif      /* __MINGW32__ */
 
 
-extern HANDLE portmaster_kernel_open(const char* portmaster_kext_path);
-extern BOOLEAN pmStrLen(const wchar_t *s, size_t maxlen, size_t *lenptr);
+extern HANDLE portmaster_kernel_open(const char* portmasterKextPath);
+extern BOOLEAN pmStrLen(const wchar_t *s, size_t maxlen, size_t *lengthPtr);
 extern BOOLEAN pmStrCpy(wchar_t *dst, size_t dstlen, const wchar_t *src);
 
 

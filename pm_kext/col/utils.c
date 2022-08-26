@@ -22,9 +22,7 @@
  * @return equality (bool as int)
  *
  */
-int compare_full_packet_info(pportmaster_packet_info  a, pportmaster_packet_info  b) {
-    int i;
-
+int compareFullPacketInfo(PortmasterPacketInfo *a, PortmasterPacketInfo *b) {
     // IP#, Protocol
     if (a->ipV6 != b->ipV6) {
         return FALSE;
@@ -42,7 +40,7 @@ int compare_full_packet_info(pportmaster_packet_info  a, pportmaster_packet_info
     }
 
     // IPs
-    for (i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
         if (a->localIP[i] != b->localIP[i]) {
             return FALSE;
         }
@@ -62,9 +60,7 @@ int compare_full_packet_info(pportmaster_packet_info  a, pportmaster_packet_info
  * @return equality (bool as int)
  *
  */
-int compare_reverse_redir_packet_info(pportmaster_packet_info original, pportmaster_packet_info current) {
-    int i;
-
+int compareReverseRedirPacketInfo(PortmasterPacketInfo *original, PortmasterPacketInfo *current) {
     // IP#, Protocol
     if (original->ipV6 != current->ipV6) {
         return FALSE;
@@ -79,7 +75,7 @@ int compare_reverse_redir_packet_info(pportmaster_packet_info original, pportmas
     }
 
     // IPs
-    for (i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
         if (original->localIP[i] != current->localIP[i]) {
             return FALSE;
         }
@@ -87,7 +83,7 @@ int compare_reverse_redir_packet_info(pportmaster_packet_info original, pportmas
 
     // check local original IP (that we DNAT to) against the new remote IP
     // this is always the case for returning DNATed packets
-    for (i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
         if (original->localIP[i] != current->remoteIP[i]) {
             return FALSE;
         }
@@ -104,9 +100,7 @@ int compare_reverse_redir_packet_info(pportmaster_packet_info original, pportmas
  * @return equality (bool as int)
  *
  */
-int compare_remote_packet_info(pportmaster_packet_info  a, pportmaster_packet_info  b) {
-    int i;
-
+int compareRemotePacketInfo(PortmasterPacketInfo *a, PortmasterPacketInfo *b) {
     // IP#, Protocol
     if (a->ipV6 != b->ipV6) {
         return FALSE;
@@ -121,7 +115,7 @@ int compare_remote_packet_info(pportmaster_packet_info  a, pportmaster_packet_in
     }
 
     // IPs
-    for (i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
         if (a->remoteIP[i] != b->remoteIP[i]) {
             return FALSE;
         }

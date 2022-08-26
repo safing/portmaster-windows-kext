@@ -39,26 +39,26 @@
 #include "verdict_cache.h"
 
 
-/*
- * IPv4/IPv6/ICMP/ICMPv6/TCP/UDP header definitions.
- */
-typedef struct {
-    UINT8  HdrLength:4;
-    UINT8  Version:4;
-    UINT8  TOS;
-    UINT16 Length;
-    UINT16 Id;
-    UINT16 FragOff;
-    UINT8  TTL;
-    UINT8  Protocol;
-    UINT16 Checksum;
-    UINT32 SrcAddr;
-    UINT32 DstAddr;
-} PM_IPHDR, *PPM_IPHDR;
+// /*
+//  * IPv4/IPv6/ICMP/ICMPv6/TCP/UDP header definitions.
+//  */
+// typedef struct {
+//     UINT8  HdrLength:4;
+//     UINT8  Version:4;
+//     UINT8  TOS;
+//     UINT16 Length;
+//     UINT16 Id;
+//     UINT16 FragOff;
+//     UINT8  TTL;
+//     UINT8  Protocol;
+//     UINT16 Checksum;
+//     UINT32 SrcAddr;
+//     UINT32 DstAddr;
+// } IPHeader, *PIPHeader;
 
-extern NTSTATUS initCalloutStructure();
+NTSTATUS initCalloutStructure();
 
-extern void classifyInboundIPv4(
+void classifyInboundIPv4(
     const FWPS_INCOMING_VALUES* inFixedValues,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
@@ -67,7 +67,7 @@ extern void classifyInboundIPv4(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut);
 
-extern void classifyOutboundIPv4(
+void classifyOutboundIPv4(
     const FWPS_INCOMING_VALUES* inFixedValues,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
@@ -76,7 +76,7 @@ extern void classifyOutboundIPv4(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut);
 
-extern void classifyInboundIPv6(
+void classifyInboundIPv6(
     const FWPS_INCOMING_VALUES* inFixedValues,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
@@ -85,7 +85,7 @@ extern void classifyInboundIPv6(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut);
 
-extern void classifyOutboundIPv6(
+void classifyOutboundIPv6(
     const FWPS_INCOMING_VALUES* inFixedValues,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
@@ -94,15 +94,14 @@ extern void classifyOutboundIPv6(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut);
 
-extern NTSTATUS genericNotify(
+NTSTATUS genericNotify(
     FWPS_CALLOUT_NOTIFY_TYPE notifyType,
     const GUID * filterKey,
     const FWPS_FILTER * filter);
 
-extern void respondWithVerdict(UINT32 id, verdict_t verdict);
-extern void redir(pportmaster_packet_info packet_info, pportmaster_packet_info redirInfo, void* packet, ULONG packet_len, BOOL dns);
-//extern void redir(FWPS_CLASSIFY_OUT* classifyOut, pportmaster_packet_info packet_info, PNET_BUFFER nb, BOOL dns);
-extern  NTSTATUS genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext);
-extern void destroyCalloutStructure();
+void respondWithVerdict(UINT32 id, verdict_t verdict);
+void redirect(PortmasterPacketInfo *packetInfo, PortmasterPacketInfo *redirInfo, void* packet, size_t packetLength, BOOL dns);
+NTSTATUS genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext);
+void destroyCalloutStructure();
 
 #endif // include guard

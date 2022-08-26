@@ -13,10 +13,10 @@
 #ifndef __PM_NETBUFFER_H
 #define __PM_NETBUFFER_H
 
-extern NTSTATUS init_netbufferpool();
-extern void free_netbufferpool();
-NTSTATUS wrap_packet_data_in_nb(void* packet_data, int packet_len, PNET_BUFFER_LIST* nbl);
-NTSTATUS copy_packet_data_from_nb(PNET_BUFFER nb, ULONG maxBytes, void** data, ULONG* data_len);
-NTSTATUS borrow_packet_data_from_nb(PNET_BUFFER nb, ULONG bytesNeeded, void** data);
+NTSTATUS initNetBufferPool();
+void freeNetBufferPool();
+NTSTATUS wrapPacketDataInNB(void *packetData, size_t packetLen, PNET_BUFFER_LIST *nbl);
+NTSTATUS copyPacketDataFromNB(PNET_BUFFER nb, size_t maxBytes, void **data, size_t *dataLength);
+NTSTATUS borrowPacketDataFromNB(PNET_BUFFER nb, size_t bytesNeeded, void **data);
 
 #endif
