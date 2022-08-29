@@ -43,14 +43,14 @@
     <ClCompile Include="src\pm_utils.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="col\utils.c">
-      <Filter>Source Files\col</Filter>
-    </ClCompile>
     <ClCompile Include="col\verdict_cache.c">
       <Filter>Source Files\col</Filter>
     </ClCompile>
     <ClCompile Include="col\packet_cache.c">
       <Filter>Source Files\col</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pm_packet.c">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -79,9 +79,6 @@
     <ClInclude Include="include\pm_kernel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\pm_linux_fix.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="include\pm_netbuffer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -104,6 +101,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\include\version.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\pm_packet.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -39,7 +39,7 @@ NTSTATUS initNetBufferPool() {
     nblPoolParams.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
     nblPoolParams.Header.Revision = NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
     nblPoolParams.Header.Size = sizeof(nblPoolParams);
-    nblPoolParams.fAllocateNetBuffer = TRUE;
+    nblPoolParams.fAllocateNetBuffer = true;
     nblPoolParams.PoolTag = PORTMASTER_TAG;
     nblPoolParams.DataSize = 0;
     nblPoolHandle = NdisAllocateNetBufferListPool(NULL, &nblPoolParams);
@@ -100,7 +100,7 @@ NTSTATUS wrapPacketDataInNB(void* packetData, size_t packetLength, PNET_BUFFER_L
         return STATUS_INVALID_PARAMETER;
     }
 
-    PMDL mdl = IoAllocateMdl(packetData, (ULONG)packetLength, FALSE, FALSE, NULL);
+    PMDL mdl = IoAllocateMdl(packetData, (ULONG)packetLength, false, false, NULL);
     if (mdl == NULL) {
         ERR("failed to allocate MDL for reinjected packet");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -165,7 +165,7 @@ NTSTATUS copyPacketDataFromNB(PNET_BUFFER nb, size_t maxBytes, void **data, size
         *dataLength = maxBytes;
     }
 
-    *data = portmasterMalloc(maxBytes, FALSE);
+    *data = portmasterMalloc(maxBytes, false);
     if (*data == NULL) {
         return STATUS_INSUFFICIENT_RESOURCES;
     }

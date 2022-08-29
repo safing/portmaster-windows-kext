@@ -13,7 +13,7 @@
 #include "pm_checksum.h"
 #include "pm_common.h"
 
-UINT32 checksumAdd(void* data, size_t length) {
+static UINT32 checksumAdd(void* data, size_t length) {
     UINT16 *data16 = (UINT16*) data;
     size_t length16 = length/2;
 
@@ -34,7 +34,7 @@ UINT32 checksumAdd(void* data, size_t length) {
     return sum;
 }
 
-UINT16 checksumFinish(UINT32 sum) {
+static UINT16 checksumFinish(UINT32 sum) {
     while (sum >> 16) {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
@@ -42,7 +42,7 @@ UINT16 checksumFinish(UINT32 sum) {
     return (UINT16) sum;
 }
 
-VOID calcIPv4Checksum(void *data, size_t length, BOOL calcTransport) {
+VOID calcIPv4Checksum(void *data, size_t length, bool calcTransport) {
     size_t ipHeaderLength = calcIPv4HeaderSize(data, length);
 
     // sanity check
@@ -105,7 +105,7 @@ VOID calcIPv4Checksum(void *data, size_t length, BOOL calcTransport) {
     }
 }
 
-void calcIPv6Checksum(void* data, size_t length, BOOL calcTransport) {
+void calcIPv6Checksum(void* data, size_t length, bool calcTransport) {
     UINT8 protocol;
     size_t ipHeaderLength = calcIPv6HeaderSize(data, length, &protocol);
 

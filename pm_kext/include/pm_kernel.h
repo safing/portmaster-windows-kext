@@ -13,8 +13,8 @@
  *  Scope:       Kernelmode
  */
 
-#ifndef WFPDriver_H
-#define WFPDriver_H
+#ifndef PM_KERNEL_H
+#define PM_KERNEL_H
 
 #define NDIS61 1                // Need to declare this to compile WFP stuff on Win7, I'm not sure why
 
@@ -33,10 +33,11 @@
 #include <initguid.h>           // Used to define GUID's
 #include "devguid.h"
 #include <stdarg.h>
+#include <stdbool.h>
 #include <ntstrsafe.h>
+
 #include "pm_common.h"
 
-//extern WDFQUEUE globalIOQueue;
 extern PRKQUEUE globalIOQueue;
 
 typedef struct {
@@ -45,7 +46,7 @@ typedef struct {
 } DataEntry;
 
 extern NTSTATUS IPQueueInitialize(WDFDEVICE Device);
-extern VOID QueueEvtIoRead(IN WDFQUEUE queue, IN WDFREQUEST request, IN size_t length);
-extern VOID QueueEvtIoWrite(IN WDFQUEUE queue, IN WDFREQUEST request, IN size_t length);
+extern void QueueEvtIoRead(IN WDFQUEUE queue, IN WDFREQUEST request, IN size_t length);
+extern void QueueEvtIoWrite(IN WDFQUEUE queue, IN WDFREQUEST request, IN size_t length);
 
-#endif // include guard
+#endif // PM_KERNEL_H

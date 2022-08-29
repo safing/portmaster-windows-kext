@@ -44,7 +44,7 @@ void debugPrint(char* name, int level, int line, char* format, ...) {
     }
 }
 
-char* ipToString(UINT32 *ip, BOOL ipV6, char* buf, UINT32 size) {
+char* ipToString(UINT32 *ip, bool ipV6, char* buf, UINT32 size) {
     if(ipV6) {
         snprintf(buf, size, "%08x:%08x:%08x:%08x", ip[0], ip[1], ip[2], ip[3]);
     } else {
@@ -82,7 +82,7 @@ PortmasterPacketInfo *createIPv4PacketInfo(PortmasterPacketInfo *packet_info) {
     packet_info->id = 123;
     packet_info->protocol = 1;
     packet_info->ipV6 = 0;
-    packet_info->direction = FALSE;
+    packet_info->direction = false;
     packet_info->localIP[0] = 0xff001001;
     packet_info->remoteIP[0] = 0x0A000001;
     packet_info->localPort = 61000;
@@ -96,7 +96,7 @@ PortmasterPacketInfo *createIPv6PacketInfo1(PortmasterPacketInfo *packetInfo) {
     packetInfo->id = 123;
     packetInfo->protocol = 1;
     packetInfo->ipV6 = 1;
-    packetInfo->direction = FALSE;
+    packetInfo->direction = false;
 
     packetInfo->localIP[0] = 1;
     packetInfo->localIP[1] = 2;

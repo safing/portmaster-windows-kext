@@ -118,6 +118,9 @@
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\wdmsec.lib;$(DDK_LIB_PATH)\ndis.lib;$(DDK_LIB_PATH)\fwpkclnt.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <Inf>
+      <TimeStamp>$(PM_VERSION_MAJOR).$(PM_VERSION_MINOR).$(PM_VERSION_REVISION).$(PM_VERSION_BUILD)</TimeStamp>
+    </Inf>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DriverSign>
@@ -161,15 +164,13 @@
     <ClCompile Include="col\packet_cache.c">
       <DeploymentContent>false</DeploymentContent>
     </ClCompile>
-    <ClCompile Include="col\utils.c">
-      <DeploymentContent>false</DeploymentContent>
-    </ClCompile>
     <ClCompile Include="col\verdict_cache.c" />
     <ClCompile Include="src\pm_callouts.c" />
     <ClCompile Include="src\pm_checksum.c" />
     <ClCompile Include="src\pm_debug.c" />
     <ClCompile Include="src\pm_kernel.c" />
     <ClCompile Include="src\pm_netbuffer.c" />
+    <ClCompile Include="src\pm_packet.c" />
     <ClCompile Include="src\pm_register.c" />
     <ClCompile Include="src\pm_utils.c" />
   </ItemGroup>
@@ -192,8 +193,8 @@
     <ClInclude Include="include\pm_callouts.h" />
     <ClInclude Include="include\pm_checksum.h" />
     <ClInclude Include="include\pm_kernel.h" />
-    <ClInclude Include="include\pm_linux_fix.h" />
     <ClInclude Include="include\pm_netbuffer.h" />
+    <ClInclude Include="include\pm_packet.h" />
     <ClInclude Include="include\pm_register.h" />
     <ClInclude Include="include\pm_utils.h" />
     <ClInclude Include="include\verdict_cache.h" />

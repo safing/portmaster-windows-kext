@@ -8,16 +8,15 @@
  *  Scope:       Kernelmode
  */
 
-#ifndef __PM_UTILS_H__
-#define __PM_UTILS_H__
+#ifndef PM_UTILS_H
+#define PM_UTILS_H
+
+#include "pm_kernel.h"
 
 #define PORTMASTER_TAG                           'saMP'
 
-void *portmasterMalloc(size_t size, BOOL paged);
+void *portmasterMalloc(size_t size, bool paged);
 void portmasterFree(void *ptr);
-
-void calcIPv4Checksum(void *data, size_t len, BOOL calcTransport);
-void calcIPv6Checksum(void *data, size_t len, BOOL calcTransport);
 
 /**
  * @brief Compares two PortmasterPacketInfo for full equality
@@ -27,7 +26,7 @@ void calcIPv6Checksum(void *data, size_t len, BOOL calcTransport);
  * @return equality (bool)
  *
  */
-BOOL compareFullPacketInfo(PortmasterPacketInfo *a, PortmasterPacketInfo *b);
+bool compareFullPacketInfo(PortmasterPacketInfo *a, PortmasterPacketInfo *b);
 
 /**
  * @brief Compares two PortmasterPacketInfo for local address equality
@@ -37,7 +36,7 @@ BOOL compareFullPacketInfo(PortmasterPacketInfo *a, PortmasterPacketInfo *b);
  * @return equality (bool)
  *
  */
-BOOL compareReverseRedirPacketInfo(PortmasterPacketInfo *original, PortmasterPacketInfo *current);
+bool compareReverseRedirPacketInfo(PortmasterPacketInfo *original, PortmasterPacketInfo *current);
 
 /**
  * @brief Compares two portmaster_packet_info for remote address equality
@@ -56,7 +55,7 @@ int compareRemotePacketInfo(PortmasterPacketInfo *a, PortmasterPacketInfo *b);
  * @return is loopback (bool)
  *
  */
-BOOL isIPv4Loopback(UINT32 addr);
+bool isIPv4Loopback(UINT32 addr);
 
 /**
  * @brief Checks if the IPv6 address is a loopback address
@@ -65,7 +64,7 @@ BOOL isIPv4Loopback(UINT32 addr);
  * @return is loopback (bool)
  *
  */
-BOOL isIPv6Loopback(UINT32 *addr);
+bool isIPv6Loopback(UINT32 *addr);
 
 /**
  * @brief Checks if the packet has loopback ip address
@@ -74,7 +73,18 @@ BOOL isIPv6Loopback(UINT32 *addr);
  * @return is loopback (bool)
  *
  */
-BOOL isPacketLoopback(PortmasterPacketInfo *packet);
+bool isPacketLoopback(PortmasterPacketInfo *packet);
+
+/**
+ * @brief Copy IPv6 address
+ *
+ * @par    inFixedValues = values structure from the callout
+ * @par    idx = index of the that contains the ipv6 values
+ * @par    ip = the array in which the values will be filled (length must be 4)
+ * @return STATUS_SUCCESS on success
+ *
+ */
+NTSTATUS copyIPv6(const FWPS_INCOMING_VALUES* inFixedValues, FWPS_FIELDS_OUTBOUND_IPPACKET_V6 idx, UINT32 *ip);
 
 #endif
 
@@ -83,7 +93,7 @@ BOOL isPacketLoopback(PortmasterPacketInfo *packet);
 
 #ifdef BUILD_ENV_DRIVER
 
-#define _ALLOC(element_size, n_of_elements) portmasterMalloc(element_size*n_of_elements, FALSE)
+#define _ALLOC(element_size, n_of_elements) portmasterMalloc(element_size*n_of_elements, false)
 #define _FREE(p_element) portmasterFree(p_element)
 
 #else
@@ -91,5 +101,6 @@ BOOL isPacketLoopback(PortmasterPacketInfo *packet);
 #define _ALLOC(element_size, n_of_elements) calloc(element_size, n_of_elements)
 #define _FREE(p_element) free(p_element)
 
-#endif
-#endif
+#endif // DYN_ALLOC_FREE
+
+#endif // PM_UTILS_H

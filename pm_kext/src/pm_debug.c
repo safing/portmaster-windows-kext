@@ -38,7 +38,7 @@ void __DEBUG(char* name, int level, int line, char* format, ...) {
     }
 }
 
-void ipToString(int *ip, BOOL ipV6, char* buf, int size) {
+void ipToString(int *ip, bool ipV6, char* buf, int size) {
     if(ipV6) {
         RtlStringCbPrintfA(buf, size, "%08x:%08x:%08x:%08x", ip[0], ip[1], ip[2], ip[3]);
     } else {
@@ -54,6 +54,7 @@ void ipToString(int *ip, BOOL ipV6, char* buf, int size) {
 
 void printIpHeader(char* buf, unsigned long bufLength, char* data, unsigned long dataLength) {
     UNREFERENCED_PARAMETER(dataLength);
+    UNREFERENCED_PARAMETER(bufLength);
     size_t i = 0;
     RtlStringCbPrintfA(buf, 250, "%3u %3u %3u %3u", data[i]& 0xFF, data[i+1]& 0xFF, data[i+2]& 0xFF, data[i+3]& 0xFF);
     /* for (i = 0; i < dataLength; i++) {

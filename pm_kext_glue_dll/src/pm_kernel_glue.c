@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 #include "pm_kernel_glue.h"
 
@@ -56,19 +57,19 @@ static HMODULE module = NULL;
 /*
  * Dll Entry
  */
-extern BOOL APIENTRY portmasterDllEntry(HANDLE module0, DWORD reason, LPVOID reserved) {
+extern bool APIENTRY portmasterDllEntry(HANDLE module0, DWORD reason, LPVOID reserved) {
     HANDLE event = INVALID_HANDLE_VALUE;
     switch (reason) {
         case DLL_PROCESS_ATTACH:
             module = module0;
             if ((portmasterTLSIndex = TlsAlloc()) == TLS_OUT_OF_INDEXES) {
-                return FALSE;
+                return false;
             }
         // Fallthrough
         case DLL_THREAD_ATTACH:
-            event = CreateEvent(NULL, FALSE, FALSE, NULL);
+            event = CreateEvent(NULL, false, false, NULL);
             if (event == NULL) {
-                return FALSE;
+                return false;
             }
             TlsSetValue(portmasterTLSIndex, (LPVOID)event);
             break;
@@ -88,39 +89,39 @@ extern BOOL APIENTRY portmasterDllEntry(HANDLE module0, DWORD reason, LPVOID res
             }
             break;
     }
-    return TRUE;
+    return true;
 }
 
 
 /*
  * Locate the portmaster driver files and copy filename with path to sysFilePath
  */
-static BOOLEAN getDriverFileName(LPWSTR sysFilePath) {
+static bool getDriverFileName(LPWSTR sysFilePath) {
     size_t dirPathLength = 0;
     size_t sysFilenameLength = 0;
 
     if (!pmStrLen(PORTMASTER_DRIVER_NAME, MAX_PATH, &sysFilenameLength)) {
         SetLastError(ERROR_BAD_PATHNAME);
-        return FALSE;
+        return false;
     }
 
     dirPathLength = (size_t)GetModuleFileName(module, sysFilePath, MAX_PATH);
     if (dirPathLength == 0) {
-        return FALSE;
+        return false;
     }
     for (; dirPathLength > 0 && sysFilePath[dirPathLength] != L'\\'; dirPathLength--)
         ;
     if (sysFilePath[dirPathLength] != L'\\' || dirPathLength + sysFilenameLength + 1 >= MAX_PATH) {
         SetLastError(ERROR_BAD_PATHNAME);
-        return FALSE;
+        return false;
     }
 
     if (!pmStrCpy(sysFilePath + dirPathLength + 1, MAX_PATH - dirPathLength - 1, PORTMASTER_DRIVER_NAME)) {
         SetLastError(ERROR_BAD_PATHNAME);
-        return FALSE;
+        return false;
     }
 
-    return TRUE;
+    return true;
 }
 
 static SC_HANDLE portmasterDriverInstall(const char* portmasterKextPath) {
@@ -205,7 +206,6 @@ pmDriverInstallExit:
     return service;
 }
 
-
 /*
  * Open a portmaster_kernel handle.
  */
@@ -268,29 +268,28 @@ HANDLE portmasterKernelOpen(const char* portmasterKextPath) {
     return handle;
 }
 
-
-BOOLEAN pmStrLen(const wchar_t *s, size_t maxlen, size_t *lengthPtr) {
+bool pmStrLen(const wchar_t *s, size_t maxlen, size_t *lengthPtr) {
     size_t i;
     for (i = 0; s[i]; i++) {
         if (i > maxlen) {
-            return FALSE;
+            return false;
         }
     }
     *lengthPtr = i;
-    return TRUE;
+    return true;
 }
 
-BOOLEAN pmStrCpy(wchar_t *dst, size_t dstlen, const wchar_t *src) {
+bool pmStrCpy(wchar_t *dst, size_t dstlen, const wchar_t *src) {
     size_t i;
     for (i = 0; src[i]; i++) {
         if (i > dstlen) {
-            return FALSE;
+            return false;
         }
         dst[i] = src[i];
     }
     if (i > dstlen) {
-        return FALSE;
+        return false;
     }
     dst[i] = src[i];
-    return TRUE;
+    return true;
 }

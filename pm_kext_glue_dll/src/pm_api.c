@@ -116,7 +116,7 @@ extern _EXPORT int PortmasterRecvVerdictRequest(PortmasterPacketInfo *packetInfo
         return ERROR_SUCCESS;
     } else {
         rc = GetLastError();
-        WARN("DeviceIoControl returned TRUE but no bytes received, GetLastError=%d", rc);
+        WARN("DeviceIoControl returned true but no bytes received, GetLastError=%d", rc);
         memset(packetInfo, 0, sizeof(PortmasterPacketInfo));
         return ERROR_INVALID_DATA;
     }
@@ -135,7 +135,7 @@ extern _EXPORT int PortmasterSetVerdict(UINT32 packet_id, verdict_t verdict) {
 
     int rc = DeviceIoControl(deviceHandle, IOCTL_SET_VERDICT, verdictInfoBuffer, sizeof(PortmasterVerdictInfo), ReadBuffer, sizeof(ReadBuffer), &dwBytesRead, NULL);
     INFO("IOCTL_SET_VERDICT returned %d", rc);
-    if (rc == FALSE) {
+    if (rc == false) {
         rc = GetLastError();
         WARN("DeviceIoControl did not succeed: GetLastError=%d, dwBytesRead=0x%X", rc, dwBytesRead);
         switch (rc) {

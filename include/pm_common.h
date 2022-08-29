@@ -9,8 +9,8 @@
  *               Userland
  */
 
-#ifndef portmaster_common_h
-#define portmaster_common_h
+#ifndef PM_COMMON_H
+#define PM_COMMON_H
 
 #define PORTMASTER_DEVICE_NAME_C "PortmasterKext"
 #define PORTMASTER_DEVICE_NAME  L"PortmasterKext"   //Wide String
@@ -231,4 +231,29 @@ CTL_CODE(SIOCTL_TYPE, 0x804, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
 
 #define PORT_PM_API 817
 
-#endif  //Include Guard
+#define IPv4 4
+#define IPv6 6
+
+// https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xml
+#define PROTOCOL_HOPOPT  0
+#define PROTOCOL_ICMP    1
+#define PROTOCOL_IGMP    2
+#define PROTOCOL_IPv4    4
+#define PROTOCOL_TCP     6
+#define PROTOCOL_UDP     17
+#define PROTOCOL_RDP     27
+#define PROTOCOL_DCCP    33
+#define PROTOCOL_IPv6    41
+#define PROTOCOL_ICMPv6  58
+#define PROTOCOL_UDPLite 136
+
+#define ICMPV4_CODE_DESTINATION_UNREACHABLE 3
+#define ICMPV4_CODE_DE_PORT_UNREACHABLE 3     // Destination Unreachable (Port unreachable) 
+
+#define ICMPV6_CODE_DESTINATION_UNREACHABLE 1
+#define ICMPV6_CODE_DE_PORT_UNREACHABLE 4     // Destination Unreachable (Port unreachable) 
+
+#define DIRECTION_OUTBOUND 0
+#define DIRECTION_INBOUND  1
+
+#endif  // PM_COMMON_H

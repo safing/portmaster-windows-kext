@@ -87,8 +87,8 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING registry
     WDFDEVICE device = { 0 };
     DEVICE_OBJECT * wdmDevice = NULL;
     FWPM_SESSION wdfSession = { 0 };
-    BOOLEAN inTransaction = FALSE;
-    BOOLEAN calloutRegistered = FALSE;
+    bool inTransaction = false;
+    bool calloutRegistered = false;
     
     initDebugStructure();
 
@@ -121,7 +121,7 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING registry
     if (!NT_SUCCESS(status)) {
         goto Exit;
     }
-    inTransaction = TRUE;
+    inTransaction = true;
 
     // Register the all Portmaster Callouts and Filters to the filter engine
     wdmDevice = WdfDeviceWdmGetDeviceObject(device);
@@ -129,14 +129,14 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING registry
     if (!NT_SUCCESS(status)) {
         goto Exit;
     }
-    calloutRegistered = TRUE;
+    calloutRegistered = true;
 
     // Commit transaction to the Filter Engine
     status = FwpmTransactionCommit(filterEngineHandle);
     if (!NT_SUCCESS(status)) {
         goto Exit;
     }
-    inTransaction = FALSE;
+    inTransaction = false;
 
     // Define this driver's unload function
     driverObject->DriverUnload = DriverUnload;
@@ -149,11 +149,11 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING registry
 Exit:
     if (!NT_SUCCESS(status)) {
         ERR("Portmaster Kernel Extension failed to load, status 0x%08x", status);
-        if (inTransaction == TRUE) {
+        if (inTransaction == true) {
             FwpmTransactionAbort(filterEngineHandle);
             //_Analysis_assume_lock_not_held_(filterEngineHandle); // Potential leak if "FwpmTransactionAbort" fails
         }
-        if (calloutRegistered == TRUE) {
+        if (calloutRegistered == true) {
             unregisterCallouts();
         }
         status = STATUS_FAILED_DRIVER_ENTRY;
@@ -192,7 +192,7 @@ NTSTATUS InitDriverObject(DRIVER_OBJECT * driverObject, UNICODE_STRING * registr
 
     // Configure the WDFDEVICE_INIT with a name to allow for access from user mode
     WdfDeviceInitSetDeviceType(deviceInit, FILE_DEVICE_NETWORK);
-    WdfDeviceInitSetCharacteristics(deviceInit, FILE_DEVICE_SECURE_OPEN, FALSE);
+    WdfDeviceInitSetCharacteristics(deviceInit, FILE_DEVICE_SECURE_OPEN, false);
     WdfDeviceInitAssignName(deviceInit, &deviceName);
     WdfPdoInitAssignRawDevice(deviceInit, &GUID_DEVCLASS_NET);
     WdfDeviceInitSetDeviceClass(deviceInit, &GUID_DEVCLASS_NET);
@@ -208,8 +208,8 @@ NTSTATUS InitDriverObject(DRIVER_OBJECT * driverObject, UNICODE_STRING * registr
         goto Exit;
     }
     // Initialize a WDF-Queue to transmit questionable packets to userland
-    ioQueueTimeout = RtlConvertLongToLargeInteger(-1 * n100nsTimeCount);
-    globalIOQueue = portmasterMalloc(sizeof(KQUEUE), FALSE);
+    ioQueueTimeout.QuadPart = -1 * n100nsTimeCount;
+    globalIOQueue = portmasterMalloc(sizeof(KQUEUE), false);
     if (globalIOQueue == NULL) {
         ERR("Space for Queue could not be allocated (why?)");
         goto Exit;
@@ -281,16 +281,17 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
             INFO("IOCTL HELLO");
             const PCHAR welcome = "Hello from kerneland.";
             long n100nsTimeCount = 70000000;
-            LARGE_INTEGER li = RtlConvertLongToLargeInteger(-1 * n100nsTimeCount);  //WTF?
-            int rc = KeDelayExecutionThread(
+            // FIXME: warning C4996: 'RtlConvertLongToLargeInteger': was declared deprecated
+            LARGE_INTEGER li = { .QuadPart = -1 * n100nsTimeCount };  //WTF?
+            NTSTATUS rc = KeDelayExecutionThread(
                     UserMode, //KPROCESSOR_MODE WaitMode, KernelMode
-                    TRUE,   //Alterable
+                    true,   //Alterable
                     &li //Unit: 100ns
                 );
             INFO("Message received : %s", pBuf);
             rc = KeDelayExecutionThread(
                     KernelMode, //KPROCESSOR_MODE WaitMode,
-                    FALSE,  //Alterable
+                    false,  //Alterable
                     &li //Unit: 100ns
                 );
             RtlZeroMemory(pBuf, pIoStackLocation->Parameters.DeviceIoControl.InputBufferLength);
@@ -331,7 +332,7 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
                 );
             //Super ugly, but recommended by MS: Callers of KeRemoveQueue should test
             //whether its return value is STATUS_TIMEOUT or STATUS_USER_APC before accessing any entry members.
-            NTSTATUS rc = (NTSTATUS) ple;
+            NTSTATUS rc = (NTSTATUS) ((UINT64) ple);
             if (rc == STATUS_TIMEOUT) {
                 INFO("List was empty -> timeout");
                 Irp->IoStatus.Status = STATUS_TIMEOUT;
@@ -396,7 +397,7 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
             INFO("IOCTL_GET_PAYLOAD for id=%u, expect %u Bytes", payload->id, payload->len);
             // 1. Locate packet in packet cache
             KeAcquireInStackQueuedSpinLock(&globalPacketCacheLock, &lockHandle);
-            UINT32 rc = getPacket(globalPacketCache, payload->id, &packet, &packetLength);
+            NTSTATUS rc = (NTSTATUS)getPacket(globalPacketCache, payload->id, &packet, &packetLength);
 
             // 2. Sanity Checks
             if (rc != 0) {

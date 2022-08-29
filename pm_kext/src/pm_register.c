@@ -62,10 +62,10 @@ UINT32 inboundV6CalloutID;
 UINT32 outboundV6CalloutID;
 
 // Registered?
-BOOL inboundV4CalloutRegistered = FALSE;
-BOOL outboundV4CalloutRegistered = FALSE;
-BOOL inboundV6CalloutRegistered = FALSE;
-BOOL outboundV6CalloutRegistered = FALSE;
+bool inboundV4CalloutRegistered = false;
+bool outboundV4CalloutRegistered = false;
+bool inboundV6CalloutRegistered = false;
+bool outboundV6CalloutRegistered = false;
 
 /** PORTMASTER SUBLAYER **/
 
@@ -197,7 +197,7 @@ NTSTATUS registerCallout(
     if (!NT_SUCCESS(status)) {
         ERR("Could not register Portmaster callout functions: rc=0x%08x", status);
     } else {
-        *registered = TRUE;
+        *registered = true;
         // INFO("Portmaster callout registered");
     }
     return status;
@@ -212,7 +212,7 @@ NTSTATUS registerInboundV4Callout(DEVICE_OBJECT* wdmDevice) {
             &mCallout,
             &displayData,
             &inboundV4CalloutID,
-            &inboundV4CalloutRegistered,
+            (BOOL*) &inboundV4CalloutRegistered,
             INBOUND_V4_CALLOUT_NAME,
             INBOUND_V4_CALLOUT_DESCRIPTION,
             INBOUND_V4_CALLOUT_GUID,
@@ -230,7 +230,7 @@ NTSTATUS registerOutboundV4Callout(DEVICE_OBJECT* wdmDevice) {
             &mCallout,
             &displayData,
             &outboundV4CalloutID,
-            &outboundV4CalloutRegistered,
+            (BOOL*) &outboundV4CalloutRegistered,
             OUTBOUND_V4_CALLOUT_NAME,
             OUTBOUND_V4_CALLOUT_DESCRIPTION,
             OUTBOUND_V4_CALLOUT_GUID,
@@ -248,7 +248,7 @@ NTSTATUS registerInboundV6Callout(DEVICE_OBJECT* wdmDevice) {
             &mCallout,
             &displayData,
             &inboundV6CalloutID,
-            &inboundV6CalloutRegistered,
+            (BOOL*) &inboundV6CalloutRegistered,
             INBOUND_V6_CALLOUT_NAME,
             INBOUND_V6_CALLOUT_DESCRIPTION,
             INBOUND_V6_CALLOUT_GUID,
@@ -266,7 +266,7 @@ NTSTATUS registerOutboundV6Callout(DEVICE_OBJECT* wdmDevice) {
             &mCallout,
             &displayData,
             &outboundV6CalloutID,
-            &outboundV6CalloutRegistered,
+            (BOOL*) &outboundV6CalloutRegistered,
             OUTBOUND_V6_CALLOUT_NAME,
             OUTBOUND_V6_CALLOUT_DESCRIPTION,
             OUTBOUND_V6_CALLOUT_GUID,
@@ -371,7 +371,7 @@ NTSTATUS unregisterCallouts() {
 
     // unregister callouts
 
-    if (inboundV4CalloutRegistered == TRUE) {
+    if (inboundV4CalloutRegistered == true) {
         status = FwpsCalloutUnregisterById(inboundV4CalloutID);
         if (!NT_SUCCESS(status)) {
             ERR("Could not unregister PortmasterInboundV4Callout: rc=0x%08x", status);
@@ -379,7 +379,7 @@ NTSTATUS unregisterCallouts() {
         }
     }
 
-    if (outboundV4CalloutRegistered == TRUE) {
+    if (outboundV4CalloutRegistered == true) {
         status = FwpsCalloutUnregisterById(outboundV4CalloutID);
         if (!NT_SUCCESS(status)) {
             ERR("Could not unregister PortmasterOutboundV4Callout: rc=0x%08x", status);
@@ -387,7 +387,7 @@ NTSTATUS unregisterCallouts() {
         }
     }
 
-    if (inboundV6CalloutRegistered == TRUE) {
+    if (inboundV6CalloutRegistered == true) {
         status = FwpsCalloutUnregisterById(inboundV6CalloutID);
         if (!NT_SUCCESS(status)) {
             ERR("Could not unregister PortmasterInboundV6Callout: rc=0x%08x", status);
@@ -395,7 +395,7 @@ NTSTATUS unregisterCallouts() {
         }
     }
 
-    if (outboundV6CalloutRegistered == TRUE) {
+    if (outboundV6CalloutRegistered == true) {
         status = FwpsCalloutUnregisterById(outboundV6CalloutID);
         if (!NT_SUCCESS(status)) {
             ERR("Could not unregister PortmasterOutboundV6Callout: rc=0x%08x", status);
