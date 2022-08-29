@@ -266,7 +266,7 @@ static void generateICMPBlockedPacketIPv4(void* originalPacket, size_t originalP
 
     ICMPHeader *icmpHeader = (ICMPHeader*) ((UINT8*)icmpPacket + sizeof(IPv4Header));
     icmpHeader->Type = ICMPV4_CODE_DESTINATION_UNREACHABLE;
-    icmpHeader->Code = ICMPV4_CODE_DE_PORT_UNREACHABLE; // the only code that closes the UDP connection on Windows 10.
+    icmpHeader->Code = ICMPV4_CODE_DU_PORT_UNREACHABLE; // the only code that closes the UDP connection on Windows 10.
 
     // Calculate checksum for the original packet and copy it in the icmp body.
     calcIPv4Checksum(originalPacket, originalPacketLength, true);
@@ -318,7 +318,7 @@ static void generateICMPBlockedPacketIPv6(void* originalPacket, size_t originalP
 
     ICMPHeader *icmpHeader = (ICMPHeader*) ((UINT8*)icmpPacket + sizeof(IPv6Header));
     icmpHeader->Type = ICMPV6_CODE_DESTINATION_UNREACHABLE;
-    icmpHeader->Code = ICMPV6_CODE_DE_PORT_UNREACHABLE; // the only code that closes the UDP connection on Windows 10.
+    icmpHeader->Code = ICMPV6_CODE_DU_PORT_UNREACHABLE; // the only code that closes the UDP connection on Windows 10.
 
     // Calculate checksum for the original packet and copy it in the icmp body.
     calcIPv6Checksum(originalPacket, originalPacketLength, true);
