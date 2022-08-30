@@ -156,7 +156,6 @@ static size_t getTCPResetPacketSizeIPv6() {
 }
 
 static void generateTCPResetPacketIPv4(void *originalPacket, size_t originalPacketLength, void *tcpResetPacket) {
-
     // Initialize header for the original packet with SYN flag
     size_t originalIPHeaderLength = calcIPv4HeaderSize(originalPacket, originalPacketLength);
     IPv4Header *originalIPHeader = (IPv4Header*) originalPacket;
@@ -175,7 +174,7 @@ static void generateTCPResetPacketIPv4(void *originalPacket, size_t originalPack
     ipHeader->DstAddr = originalIPHeader->SrcAddr; // Source becomes destination
     ipHeader->SrcAddr = originalIPHeader->DstAddr; // Destination becomes source
 
-        // Initialize TCP header
+    // Initialize TCP header
     TCPHeader *tcpHeader = (TCPHeader*) ((UINT8*)tcpResetPacket + sizeof(IPv4Header));
     tcpHeader->SrcPort = originalTCPHeader->DstPort; // Source becomes destination
     tcpHeader->DstPort = originalTCPHeader->SrcPort; // Destination becomes source
@@ -224,29 +223,41 @@ static void generateTCPResetPacketIPv6(void *originalPacket, size_t originalPack
 static size_t getICMPBlockedPacketSizeIPv4(void* originalPacket, size_t originalPacketLength) {
     size_t originalIPHeaderLength = calcIPv4HeaderSize(originalPacket, originalPacketLength);
     // ICMP body is the original packet IP header + first 64bits (8 bytes) of the body https://www.rfc-editor.org/rfc/rfc792
-    UINT16 bytesToCopyFromOriginalPacket = (UINT16)originalIPHeaderLength + 8;
+    size_t bytesToCopyFromOriginalPacket = originalIPHeaderLength + 8;
     // Check if the body is less then 8 bytes
-    if(bytesToCopyFromOriginalPacket < originalPacketLength) {
-        bytesToCopyFromOriginalPacket = (UINT16)originalPacketLength;
+    if(bytesToCopyFromOriginalPacket > originalPacketLength) {
+        bytesToCopyFromOriginalPacket = originalPacketLength;
     }
 
-    UINT16 headerLength = sizeof(IPv4Header) + sizeof(ICMPHeader);
-    UINT16 packetLength = headerLength + bytesToCopyFromOriginalPacket;
+    size_t headerLength = sizeof(IPv4Header) + sizeof(ICMPHeader);
+    size_t packetLength = headerLength + bytesToCopyFromOriginalPacket;
 
     return packetLength;
 }
 
-static void generateICMPBlockedPacketIPv4(void* originalPacket, size_t originalPacketLength, bool useLocalHost, void *icmpPacket) {
+static void generateICMPBlockedPacketIPv4(void* originalPacket, size_t originalPacketLength, bool useLocalHost, void **icmpPacket) {
     // Initialize header for the original UDP packet
-    IPv4Header* originalIPHeader = (IPv4Header*) originalPacket;
+    IPv4Header *originalIPHeader = (IPv4Header*) originalPacket;
+    INFO("Generating ICMPv4 packet");
 
     // Initialize variables
-    UINT16 headerLength = sizeof(IPv4Header) + sizeof(ICMPHeader);
-    UINT16 packetLength = (UINT16)getICMPBlockedPacketSizeIPv4(originalPacket, originalPacketLength);
-    UINT16 bytesToCopyFromOriginalPacket = packetLength - headerLength;
+    size_t originalIPHeaderLength = calcIPv4HeaderSize(originalPacket, originalPacketLength);
+    // ICMP body is the original packet IP header + first 64bits (8 bytes) of the body https://www.rfc-editor.org/rfc/rfc792
+    size_t bytesToCopyFromOriginalPacket = originalIPHeaderLength + 8;
+    // Check if the body is less then 8 bytes
+    if(bytesToCopyFromOriginalPacket > originalPacketLength) {
+        bytesToCopyFromOriginalPacket = originalPacketLength;
+    }
+
+    size_t headerLength = sizeof(IPv4Header) + sizeof(ICMPHeader);
+    size_t packetLength = headerLength + bytesToCopyFromOriginalPacket;
+
+    *icmpPacket = portmasterMalloc(packetLength, false);
+
+    INFO("headerLength: %d, packetLength: %d, bytesToCopyFromOriginalPacket: %d", headerLength, packetLength, bytesToCopyFromOriginalPacket);
 
     // Initialize IPv4 header
-    IPv4Header *ipHeader = (IPv4Header*) icmpPacket;
+    IPv4Header *ipHeader = (IPv4Header*) *icmpPacket;
     ipHeader->HdrLength = sizeof(IPv4Header) / 4;
     ipHeader->Version = IPv4;
     ipHeader->TOS = 0;
@@ -264,16 +275,16 @@ static void generateICMPBlockedPacketIPv4(void* originalPacket, size_t originalP
         ipHeader->DstAddr = originalIPHeader->SrcAddr; // Destination becomes source
     }
 
-    ICMPHeader *icmpHeader = (ICMPHeader*) ((UINT8*)icmpPacket + sizeof(IPv4Header));
+    ICMPHeader *icmpHeader = (ICMPHeader*) ((UINT8*)*icmpPacket + sizeof(IPv4Header));
     icmpHeader->Type = ICMPV4_CODE_DESTINATION_UNREACHABLE;
-    icmpHeader->Code = ICMPV4_CODE_DU_PORT_UNREACHABLE; // the only code that closes the UDP connection on Windows 10.
+    icmpHeader->Code = ICMPV4_CODE_DU_ADMINISTRATIVELY_PROHIBITED; // the only code that closes the UDP connection on Windows 10.
 
     // Calculate checksum for the original packet and copy it in the icmp body.
     calcIPv4Checksum(originalPacket, originalPacketLength, true);
     RtlCopyMemory(((UINT8*)icmpHeader + sizeof(ICMPHeader)), originalPacket, bytesToCopyFromOriginalPacket);
 
     // Calculate checksum for the icmp packet
-    calcIPv4Checksum(icmpPacket, packetLength, true);
+    calcIPv4Checksum(*icmpPacket, packetLength, true);
 }
 
 static size_t getICMPBlockedPacketSizeIPv6(size_t originalPacketLength) {
@@ -328,8 +339,7 @@ static void generateICMPBlockedPacketIPv6(void* originalPacket, size_t originalP
     calcIPv6Checksum(icmpPacket, packetLength, true);
 }
 
-
-static NTSTATUS sendICMPBlockedPacket(PortmasterPacketInfo* packetInfo, void* originalPacket, size_t originalPacketLength, bool useLocalHost) {
+static NTSTATUS sendICMPBlockedPacket(PortmasterPacketInfo* packetInfo, void *originalPacket, size_t originalPacketLength, bool useLocalHost) {
     // Only UDP is supported
     if(packetInfo->protocol != PROTOCOL_UDP) {
         return STATUS_NOT_SUPPORTED; // Not UDP
@@ -344,8 +354,8 @@ static NTSTATUS sendICMPBlockedPacket(PortmasterPacketInfo* packetInfo, void* or
         generateICMPBlockedPacketIPv6(packetInfo, originalPacketLength, useLocalHost, icmpPacket);
     } else {
         packetLength = getICMPBlockedPacketSizeIPv4(originalPacket, originalPacketLength);
-        icmpPacket = portmasterMalloc(packetLength, false);
-        generateICMPBlockedPacketIPv4(packetInfo, originalPacketLength, useLocalHost, icmpPacket);
+        //icmpPacket = portmasterMalloc(packetLength, false);
+        generateICMPBlockedPacketIPv4(packetInfo, originalPacketLength, useLocalHost, &icmpPacket);
     }
 
      // Reverse direction and inject packet
@@ -353,7 +363,7 @@ static NTSTATUS sendICMPBlockedPacket(PortmasterPacketInfo* packetInfo, void* or
     NTSTATUS status = injectPacket(packetInfo, injectDirection, icmpPacket, packetLength); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
-        ERR("sendICMPBlockedPacket ipv6 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
+        ERR("sendICMPBlockedPacket -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
     }
 
     return status;

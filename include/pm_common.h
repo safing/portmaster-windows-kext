@@ -248,10 +248,11 @@ CTL_CODE(SIOCTL_TYPE, 0x804, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
 #define PROTOCOL_UDPLite 136
 
 #define ICMPV4_CODE_DESTINATION_UNREACHABLE 3
-#define ICMPV4_CODE_DU_PORT_UNREACHABLE 3     // Destination Unreachable (Port unreachable) 
+#define ICMPV4_CODE_DU_PORT_UNREACHABLE 3               // Destination Unreachable (Port unreachable) 
+#define ICMPV4_CODE_DU_ADMINISTRATIVELY_PROHIBITED 13   // Destination Unreachable (Communication Administratively Prohibited) 
 
 #define ICMPV6_CODE_DESTINATION_UNREACHABLE 1
-#define ICMPV6_CODE_DU_PORT_UNREACHABLE 4     // Destination Unreachable (Port unreachable) 
+#define ICMPV6_CODE_DU_PORT_UNREACHABLE 4               // Destination Unreachable (Port unreachable) 
 
 #define DIRECTION_OUTBOUND 0
 #define DIRECTION_INBOUND  1
