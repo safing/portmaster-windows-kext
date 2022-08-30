@@ -101,7 +101,7 @@ int cleanVerdictCache(VerdictCache *verdictCache, PortmasterPacketInfo **packetI
  * @return error code
  *
  */
-int teardownVerdictCache(VerdictCache* verdictCache) {
+int teardownVerdictCache(VerdictCache *verdictCache) {
     UNREFERENCED_PARAMETER(verdictCache);
     // FIXME: implement
     return 0;
@@ -212,7 +212,7 @@ verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetI
  * @return error code
  *
  */
-verdict_t checkReverseRedirect(VerdictCache* verdictCache, PortmasterPacketInfo *packetInfo, PortmasterPacketInfo **redirInfo) {
+verdict_t checkReverseRedirect(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, PortmasterPacketInfo **redirInfo) {
     if (!verdictCache || !packetInfo || !redirInfo) {
         return PORTMASTER_VERDICT_GET;
     }
