@@ -195,7 +195,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
         calcIPv6Checksum(packet, packetLength, true);
     }
 
-    NTSTATUS status = injectPacket(packetInfo, packetInfo->direction, packet, packetLength); // this call will free the packet even if the inject fails
+    NTSTATUS status = injectPacket(packetInfo, packetInfo->direction, packet, packetLength, false); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
         ERR("respondWithVerdict -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
