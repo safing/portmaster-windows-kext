@@ -69,7 +69,7 @@ HANDLE getInjectionHandleForPacket(PortmasterPacketInfo *packetInfo) {
     if (packetInfo->ipV6 == 0) {
         return injectV4Handle;
     } else{
-        return injectV4Handle;
+        return injectV6Handle;
     }
 }
 
@@ -328,22 +328,17 @@ static void generateICMPBlockedPacketIPv6(void* originalPacket, size_t originalP
 }
 
 static NTSTATUS sendICMPBlockedPacket(PortmasterPacketInfo* packetInfo, void *originalPacket, size_t originalPacketLength, bool useLocalHost) {
-    // Only UDP is supported
-    if(packetInfo->protocol != PROTOCOL_UDP) {
-        return STATUS_NOT_SUPPORTED; // Not UDP
-    }
-
     size_t packetLength = 0;
     void *icmpPacket = NULL;
 
     if(packetInfo->ipV6) {
         packetLength = getICMPBlockedPacketSizeIPv6(originalPacketLength);
         icmpPacket = portmasterMalloc(packetLength, false);
-        generateICMPBlockedPacketIPv6(packetInfo, originalPacketLength, useLocalHost, icmpPacket);
+        generateICMPBlockedPacketIPv6(originalPacket, originalPacketLength, useLocalHost, icmpPacket);
     } else {
         packetLength = getICMPBlockedPacketSizeIPv4(originalPacket, originalPacketLength);
         icmpPacket = portmasterMalloc(packetLength, false);
-        generateICMPBlockedPacketIPv4(packetInfo, originalPacketLength, useLocalHost, icmpPacket);
+        generateICMPBlockedPacketIPv4(originalPacket, originalPacketLength, useLocalHost, icmpPacket);
     }
 
      // Reverse direction and inject packet
