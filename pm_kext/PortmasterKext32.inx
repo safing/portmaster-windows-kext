@@ -25,7 +25,6 @@ Provider = %Provider%
 CatalogFile = PortmasterKext32.Cat
 PnpLockdown=1
 
-
 [SourceDisksNames]
 1 = %DiskName%
 
@@ -35,6 +34,24 @@ PortmasterKext32.sys = 1
 [DestinationDirs]
 DefaultDestDir = 12 ; %windir%\system32\drivers
 PortmasterKext.DriverFiles = 12 ; %windir%\system32\drivers
+
+[DefaultInstall.NTx86]
+OptionDesc = %Description%
+CopyFiles = PortmasterKext.DriverFiles
+
+[DefaultInstall.NTx86.Services]
+AddService = %ServiceName%,,PortmasterKext.Service
+
+[PortmasterKext.DriverFiles]
+PortmasterKext32.sys,,,0x00000040 ; COPYFLG_OVERWRITE_OLDER_ONLY
+
+[PortmasterKext.Service]
+DisplayName = %ServiceName%
+Description = %ServiceDesc%
+ServiceType = 1  ; SERVICE_KERNEL_DRIVER
+StartType = 0    ; SERVICE_BOOT_START
+ErrorControl = 1 ; SERVICE_ERROR_NORMAL
+ServiceBinary = %12%\PortmasterKext32.sys
 
 [Strings]
 Provider = "Safing ICS Technologies GmbH"
