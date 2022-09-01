@@ -12,56 +12,55 @@
  *               (Userland for development)
  */
 
-#ifndef __COL_VERDICTS_H__
-#define __COL_VERDICTS_H__
+#ifndef VERDICT_CACHE_H
+#define VERDICT_CACHE_H
 
 #include "pm_common.h"
 
 
-typedef struct verdict_cache_item verdict_cache_item_t;
-struct verdict_cache_item {
-    verdict_cache_item_t* prev;
-    verdict_cache_item_t* next;
+typedef struct VerdictCacheItem {
+    struct VerdictCacheItem *prev;
+    struct VerdictCacheItem *next;
 
-    portmaster_packet_info* packet_info;
+    PortmasterPacketInfo *packetInfo;
     verdict_t verdict;
-};
+} VerdictCacheItem;
 
-typedef struct verdict_cache {
+typedef struct {
     UINT32 size;
-    UINT32 max_size;
-    verdict_cache_item_t* head;
-    verdict_cache_item_t* tail;
-} verdict_cache_t;
+    UINT32 maxSize;
+    VerdictCacheItem *head;
+    VerdictCacheItem *tail;
+} VerdictCache;
 
 /**
  * @brief Initializes the verdict cache
  *
  * @par    max_size      = size of cache
- * @par    verdict_cache = returns new verdict_cache_t
+ * @par    verdict_cache = returns new verdictCache
  * @return error code
  *
  */
-extern int create_verdict_cache(UINT32 max_size, verdict_cache_t** verdict_cache);
+int createVerdictCache(UINT32 maxSize, VerdictCache **verdict_cache);
 
 /**
  * @brief Cleans the verdict cache
  *
- * @par    verdict_cache = verdict_cache to use
- * @par    packet_info   = returns portmaster_packet_info to free
+ * @par    verdictCache = verdict_cache to use
+ * @par    packetInfo   = returns portmasterPacketInfo to free
  * @return error code
  *
  */
-extern int clean_verdict_cache(verdict_cache_t* verdict_cache, portmaster_packet_info** packet_info);
+int cleanVerdictCache(VerdictCache *verdictCache, PortmasterPacketInfo **packetInfo);
 
 /**
  * @brief Tears down the verdict cache
  *
- * @par    verdict_cache = verdict_cache to use
+ * @par    verdictCache = verdict cache to use
  * @return error code
  *
  */
-extern int teardown_verdict_cache(verdict_cache_t* verdict_cache);
+int teardownVerdictCache(VerdictCache *verdictCache);
 
 /**
  * @brief Adds verdict to cache
@@ -72,17 +71,17 @@ extern int teardown_verdict_cache(verdict_cache_t* verdict_cache);
  * @return error code
  *
  */
-extern int add_verdict(verdict_cache_t* verdict_cache, portmaster_packet_info* packet_info, verdict_t verdict);
+int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, verdict_t verdict);
 
 /**
  * @brief Checks packet for verdict
  *
- * @par    verdict_cache = verdict_cache to use
- * @par    packet_info   = pointer to packet_info
+ * @par    verdictCache = verdict cache to use
+ * @par    packetInfo   = pointer to packet info
  * @return verdict
  *
  */
-extern verdict_t check_verdict(verdict_cache_t* verdict_cache, portmaster_packet_info* packet_info);
+verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo);
 
 /**
  * @brief Checks packet for reverse redirection
@@ -94,7 +93,7 @@ extern verdict_t check_verdict(verdict_cache_t* verdict_cache, portmaster_packet
  * @return error code
  *
  */
-extern verdict_t check_reverse_redir(verdict_cache_t* verdict_cache, portmaster_packet_info* packet_info, portmaster_packet_info** redir_info);
+verdict_t checkReverseRedirect(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, PortmasterPacketInfo **redirInfo);
 
 #endif
 
@@ -110,6 +109,7 @@ extern verdict_t check_reverse_redir(verdict_cache_t* verdict_cache, portmaster_
 #define _ALLOC(element_size, n_of_elements) calloc(element_size, n_of_elements)
 #define _FREE(p_element) free(p_element)
 
-#endif
-#endif
-#endif
+#endif // DYN_ALLOC_FREE
+#endif // 0
+
+#endif // VERDICT_CACHE_H

@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 #include "pm_kernel_glue.h"
 
@@ -41,12 +42,12 @@
 /*
  * Prototypes.
  */
-static SC_HANDLE portmasterDriverInstall(const char* portmaster_kext_path);
+static SC_HANDLE portmasterDriverInstall(const char* portmasterKextPath);
 
 /*
  * Thread local.
  */
-static DWORD portmaster_tls_idx;
+static DWORD portmasterTLSIndex;
 
 /*
  * Current DLL hmodule.
@@ -56,80 +57,82 @@ static HMODULE module = NULL;
 /*
  * Dll Entry
  */
-extern BOOL APIENTRY portmasterDllEntry(HANDLE module0, DWORD reason, LPVOID reserved) {
-    HANDLE event;
+extern bool APIENTRY portmasterDllEntry(HANDLE module0, DWORD reason, LPVOID reserved) {
+    HANDLE event = INVALID_HANDLE_VALUE;
     switch (reason) {
         case DLL_PROCESS_ATTACH:
             module = module0;
-            if ((portmaster_tls_idx = TlsAlloc()) == TLS_OUT_OF_INDEXES) {
-                return FALSE;
+            if ((portmasterTLSIndex = TlsAlloc()) == TLS_OUT_OF_INDEXES) {
+                return false;
             }
         // Fallthrough
         case DLL_THREAD_ATTACH:
-            event = CreateEvent(NULL, FALSE, FALSE, NULL);
+            event = CreateEvent(NULL, false, false, NULL);
             if (event == NULL) {
-                return FALSE;
+                return false;
             }
-            TlsSetValue(portmaster_tls_idx, (LPVOID)event);
+            TlsSetValue(portmasterTLSIndex, (LPVOID)event);
             break;
 
         case DLL_PROCESS_DETACH:
-            event = (HANDLE)TlsGetValue(portmaster_tls_idx);
+            event = (HANDLE)TlsGetValue(portmasterTLSIndex);
             if (event != (HANDLE)NULL) {
                 CloseHandle(event);
             }
-            TlsFree(portmaster_tls_idx);
+            TlsFree(portmasterTLSIndex);
             break;
 
         case DLL_THREAD_DETACH:
-            event = (HANDLE)TlsGetValue(portmaster_tls_idx);
+            event = (HANDLE)TlsGetValue(portmasterTLSIndex);
             if (event != (HANDLE)NULL) {
                 CloseHandle(event);
             }
             break;
     }
-    return TRUE;
+    return true;
 }
 
 
 /*
- * Locate the portmaster driver files and copy filename with path to sys_str
+ * Locate the portmaster driver files and copy filename with path to sysFilePath
  */
-static BOOLEAN getDriverFileName(LPWSTR sys_str) {
-    size_t dir_len, sys_len;
+static bool getDriverFileName(LPWSTR sysFilePath) {
+    size_t dirPathLength = 0;
+    size_t sysFilenameLength = 0;
 
-    if (!pmStrLen(PORTMASTER_DRIVER_NAME, MAX_PATH, &sys_len)) {
+    if (!pmStrLen(PORTMASTER_DRIVER_NAME, MAX_PATH, &sysFilenameLength)) {
         SetLastError(ERROR_BAD_PATHNAME);
-        return FALSE;
+        return false;
     }
 
-    dir_len= (size_t)GetModuleFileName(module, sys_str, MAX_PATH);
-    if (dir_len == 0) {
-        return FALSE;
+    dirPathLength = (size_t)GetModuleFileName(module, sysFilePath, MAX_PATH);
+    if (dirPathLength == 0) {
+        return false;
     }
-    for (; dir_len > 0 && sys_str[dir_len] != L'\\'; dir_len--)
+    for (; dirPathLength > 0 && sysFilePath[dirPathLength] != L'\\'; dirPathLength--)
         ;
-    if (sys_str[dir_len] != L'\\' || dir_len + sys_len + 1 >= MAX_PATH) {
+    if (sysFilePath[dirPathLength] != L'\\' || dirPathLength + sysFilenameLength + 1 >= MAX_PATH) {
         SetLastError(ERROR_BAD_PATHNAME);
-        return FALSE;
+        return false;
     }
 
-    if (!pmStrCpy(sys_str + dir_len +1, MAX_PATH-dir_len-1, PORTMASTER_DRIVER_NAME)) {
+    if (!pmStrCpy(sysFilePath + dirPathLength + 1, MAX_PATH - dirPathLength - 1, PORTMASTER_DRIVER_NAME)) {
         SetLastError(ERROR_BAD_PATHNAME);
-        return FALSE;
+        return false;
     }
 
-    return TRUE;
+    return true;
 }
 
-static SC_HANDLE portmasterDriverInstall(const char* portmaster_kext_path) {
-    DWORD err, retries = 2;
-    SC_HANDLE manager = NULL, service = NULL;
-    wchar_t pm_sys[MAX_PATH+1];
-    SERVICE_STATUS status;
+static SC_HANDLE portmasterDriverInstall(const char* portmasterKextPath) {
+    DWORD err = 0;
+    DWORD retries = 2;
+    wchar_t pmSys[MAX_PATH+1];
+    SC_HANDLE service = NULL;
+    
 
     // Open the service manager:
-    manager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+    SC_HANDLE manager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
     if (manager == NULL) {
         goto pmDriverInstallExit;
     }
@@ -142,27 +145,27 @@ pmDriverInstallReTry:
     }
 
     // Get driver file:
-    if (portmaster_kext_path == NULL) {
+    if (portmasterKextPath == NULL) {
         INFO("Getting default name for portmaster kext");
-        if (!getDriverFileName(pm_sys)) {
+        if (!getDriverFileName(pmSys)) {
             goto pmDriverInstallExit;
         }
     } else {
-        if (strlen(portmaster_kext_path) >= MAX_PATH) {
-            ERR("portmaster_kext_path too long: %s", portmaster_kext_path);
+        if (strlen(portmasterKextPath) >= MAX_PATH) {
+            ERR("portmaster_kext_path too long: %s", portmasterKextPath);
             SetLastError(ERROR_BAD_LENGTH);
             goto pmDriverInstallExit;
         }
         
         // FIXME: error C4996: 'mbstowcs': This function or variable may be unsafe. Consider using mbstowcs_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS.
-        mbstowcs(pm_sys, portmaster_kext_path, MAX_PATH);
+        mbstowcs(pmSys, portmasterKextPath, MAX_PATH);
     }
-    INFO("Trying to start Service '%ls'", pm_sys);
+    INFO("Trying to start Service '%ls'", pmSys);
 
     // Create the service:
     service = CreateService(manager, PORTMASTER_DEVICE_NAME,
             PORTMASTER_DEVICE_NAME, SERVICE_ALL_ACCESS, SERVICE_KERNEL_DRIVER,
-            SERVICE_DEMAND_START, SERVICE_ERROR_NORMAL, pm_sys, NULL, NULL,
+            SERVICE_DEMAND_START, SERVICE_ERROR_NORMAL, pmSys, NULL, NULL,
             NULL, NULL, NULL);
     if (service == NULL) {
         if (GetLastError() == ERROR_SERVICE_EXISTS) {
@@ -184,6 +187,7 @@ pmDriverInstallExit:
                 SetLastError(0);
             } else {
                 // Failed to start service; clean-up:
+                SERVICE_STATUS status;
                 ControlService(service, SERVICE_CONTROL_STOP, &status);
                 DeleteService(service);
                 CloseServiceHandle(service);
@@ -202,48 +206,45 @@ pmDriverInstallExit:
     return service;
 }
 
-
 /*
  * Open a portmaster_kernel handle.
  */
-HANDLE portmaster_kernel_open(const char* portmaster_kext_path) {
+HANDLE portmasterKernelOpen(const char* portmasterKextPath) {
 #define FORMAT_FLAGS FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_ARGUMENT_ARRAY | FORMAT_MESSAGE_ALLOCATE_BUFFER
-    DWORD err;
-    HANDLE handle;
-    SC_HANDLE service;
+    DWORD err = 0;
     LPCTSTR strErrorMessage = NULL;
 
     INFO("Trying to CreateFile %ls", L"\\\\.\\" PORTMASTER_DEVICE_NAME);
-    handle = CreateFile( L"\\\\.\\" PORTMASTER_DEVICE_NAME,
+    HANDLE handle = CreateFile( L"\\\\.\\" PORTMASTER_DEVICE_NAME,
             GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
             FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
 
-    INFO("portmaster_kernel_open value of handle (*void) == 0xp%p", handle);
+    INFO("portmasterKernelOpen value of handle (*void) == 0xp%p", handle);
     if (handle == INVALID_HANDLE_VALUE) {
         err = GetLastError();
         FormatMessage(FORMAT_FLAGS, NULL, err, 0, (LPWSTR) &strErrorMessage, 0, NULL);
-        WARN("portmaster_kernel_open handle invalid: err= %u", err);
-        WARN("portmaster_kernel_open %ls", strErrorMessage);
+        WARN("portmasterKernelOpen handle invalid: err= %u", err);
+        WARN("portmasterKernelOpen %ls", strErrorMessage);
         if (err != ERROR_FILE_NOT_FOUND && err != ERROR_PATH_NOT_FOUND) {
-            ERR("portmaster_kernel_open err= %u is unhandled -> exit", err);
+            ERR("portmasterKernelOpen err= %u is unhandled -> exit", err);
             return INVALID_HANDLE_VALUE;
         }
 
         // Open failed because the device isn't installed; install it now.
-        WARN("portmaster_kernel_open CreateFile: ERROR_FILE_NOT_FOUND or ERROR_PATH_NOT_FOUND -> device not installed, install it now");
+        WARN("portmasterKernelOpen CreateFile: ERROR_FILE_NOT_FOUND or ERROR_PATH_NOT_FOUND -> device not installed, install it now");
         SetLastError(0);
-        service = portmasterDriverInstall(portmaster_kext_path);
+        SC_HANDLE service = portmasterDriverInstall(portmasterKextPath);
         if (service == NULL) {
             err= GetLastError();
             if (err == 0) {
-                ERR("portmaster_kernel_open device install NOK: err was %u but service NOT installed (why?)", err);
+                ERR("portmasterKernelOpen device install NOK: err was %u but service NOT installed (why?)", err);
                 FormatMessage(FORMAT_FLAGS, NULL, err, 0, (LPWSTR) &strErrorMessage, 0, NULL);
-                WARN("portmaster_kernel_open device install NOK: ls%u", strErrorMessage);
+                WARN("portmasterKernelOpen device install NOK: ls%u", strErrorMessage);
                 SetLastError(ERROR_OPEN_FAILED);
             }
             return INVALID_HANDLE_VALUE;
         }
-        INFO("portmaster_kernel_open device install OK -> service running (test with sc query portmaster_kernel)!");
+        INFO("portmasterKernelOpen device install OK -> service running (test with sc query portmaster_kernel)!");
 
         handle = CreateFile(L"\\\\.\\" PORTMASTER_DEVICE_NAME,
                 GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
@@ -258,39 +259,37 @@ HANDLE portmaster_kernel_open(const char* portmaster_kext_path) {
 
         if (handle == INVALID_HANDLE_VALUE) {
             err= GetLastError();
-            INFO("portmaster_kernel_open CreateFile NOK: handle=0x%p, err=%u", handle, err);
+            INFO("portmasterKernelOpen CreateFile NOK: handle=0x%p, err=%u", handle, err);
             FormatMessage(FORMAT_FLAGS, NULL, err, 0, (LPWSTR) &strErrorMessage, 0, NULL);
-            WARN("portmaster_kernel_open %ls", strErrorMessage);
+            WARN("portmasterKernelOpen %ls", strErrorMessage);
             return INVALID_HANDLE_VALUE;
         }
     }
     return handle;
 }
 
-
-
-BOOLEAN pmStrLen(const wchar_t *s, size_t maxlen, size_t *lenptr) {
+bool pmStrLen(const wchar_t *s, size_t maxlen, size_t *lengthPtr) {
     size_t i;
     for (i = 0; s[i]; i++) {
         if (i > maxlen) {
-            return FALSE;
+            return false;
         }
     }
-    *lenptr = i;
-    return TRUE;
+    *lengthPtr = i;
+    return true;
 }
 
-BOOLEAN pmStrCpy(wchar_t *dst, size_t dstlen, const wchar_t *src) {
+bool pmStrCpy(wchar_t *dst, size_t dstlen, const wchar_t *src) {
     size_t i;
     for (i = 0; src[i]; i++) {
         if (i > dstlen) {
-            return FALSE;
+            return false;
         }
         dst[i] = src[i];
     }
     if (i > dstlen) {
-        return FALSE;
+        return false;
     }
     dst[i] = src[i];
-    return TRUE;
+    return true;
 }

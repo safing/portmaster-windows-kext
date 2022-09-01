@@ -18,97 +18,59 @@
 #define LOGGER_NAME "pm_callouts"
 #include "pm_debug.h"
 #include "pm_checksum.h"
+#include "pm_packet.h"
 
 #include "pm_utils.h"
-#include <intsafe.h>
 
 /******************************************************************
  * Global (static) data structures
  ******************************************************************/
-static verdict_cache_t* verdictCacheV4;
+static VerdictCache *verdictCacheV4;
 static KSPIN_LOCK verdictCacheV4Lock;
 
-static verdict_cache_t* verdictCacheV6;
+static VerdictCache *verdictCacheV6;
 static KSPIN_LOCK verdictCacheV6Lock;
 
-packet_cache_t* packetCache;    //Not static anymore, because it is also used in pm_kernel.c
-KSPIN_LOCK packetCacheLock;
-
-static HANDLE inject_v4_handle = NULL;
-static HANDLE inject_v6_handle = NULL;
+PacketCache *globalPacketCache = NULL;    //Not static anymore, because it is also used in pm_kernel.c
+KSPIN_LOCK globalPacketCacheLock = {0};
 
 /******************************************************************
  * Helper Functions
  ******************************************************************/
-static void free_after_inject(VOID *context, NET_BUFFER_LIST *nbl, BOOLEAN dispatch_level);
 
 NTSTATUS initCalloutStructure() {
-    int rc;
-    NTSTATUS status;
-
-    rc = create_verdict_cache(PM_VERDICT_CACHE_SIZE, &verdictCacheV4);
+    int rc = createVerdictCache(PM_VERDICT_CACHE_SIZE, &verdictCacheV4);
     if (rc != 0) {
         return STATUS_INTERNAL_ERROR;
     }
     KeInitializeSpinLock(&verdictCacheV4Lock);
 
-    rc = create_verdict_cache(PM_VERDICT_CACHE_SIZE, &verdictCacheV6);
+    rc = createVerdictCache(PM_VERDICT_CACHE_SIZE, &verdictCacheV6);
     if (rc != 0) {
         return STATUS_INTERNAL_ERROR;
     }
     KeInitializeSpinLock(&verdictCacheV6Lock);
 
-    rc = create_packet_cache(PM_PACKET_CACHE_SIZE, &packetCache);
+    rc = createPacketCache(PM_PACKET_CACHE_SIZE, &globalPacketCache);
     if (rc != 0) {
         return STATUS_INTERNAL_ERROR;
     }
-    KeInitializeSpinLock(&packetCacheLock);
+    KeInitializeSpinLock(&globalPacketCacheLock);
 
-    // Create the packet injection handles.
-    status = FwpsInjectionHandleCreate(AF_INET,
-            FWPS_INJECTION_TYPE_NETWORK,
-            &inject_v4_handle);
-    if (!NT_SUCCESS(status)) {
-        ERR("failed to create WFP in4 injection handle", status);
-        return status;
-    }
-
-    status = FwpsInjectionHandleCreate(AF_INET6,
-            FWPS_INJECTION_TYPE_NETWORK,
-            &inject_v6_handle);
-    if (!NT_SUCCESS(status)) {
-        ERR("failed to create WFP in6 injection handle", status);
-        return status;
-    }
+    initializeInjectHandles();
 
     return STATUS_SUCCESS;
 }
 
 void destroyCalloutStructure() {
-    if (inject_v4_handle != NULL) {
-        FwpsInjectionHandleDestroy(inject_v4_handle);
-        inject_v4_handle = NULL;
-    }
-
-    if (inject_v6_handle != NULL) {
-        FwpsInjectionHandleDestroy(inject_v6_handle);
-        inject_v6_handle = NULL;
-    }
-}
-
-HANDLE getInjectionHandle(pportmaster_packet_info packetInfo) {
-    if (packetInfo->ipV6 == 0) {
-        return inject_v4_handle;
-    } else {
-        return inject_v6_handle;
-    }
+    destroyInjectHandles();
 }
 
 NTSTATUS genericNotify(
     FWPS_CALLOUT_NOTIFY_TYPE notifyType,
     const GUID * filterKey,
     const FWPS_FILTER * filter) {
-    NTSTATUS status = STATUS_SUCCESS;
+
     UNREFERENCED_PARAMETER(filterKey);
     UNREFERENCED_PARAMETER(filter);
 
@@ -120,7 +82,7 @@ NTSTATUS genericNotify(
             INFO("A filter has just been deleted");
             break;
     }
-    return status;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext) {
@@ -130,624 +92,41 @@ NTSTATUS genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS copyIPv6(const FWPS_INCOMING_VALUES* inFixedValues, FWPS_FIELDS_OUTBOUND_IPPACKET_V6 idx, UINT32* ip) {
-    int i;
-    UINT32* ipV6;
-
-    // sanity check
-    if (!inFixedValues || !ip) {
-        ERR("Invalid parameters");
-        return STATUS_INVALID_PARAMETER;
-    }
-
-    // check type
-    if (inFixedValues->incomingValue[idx].value.type != FWP_BYTE_ARRAY16_TYPE) {
-        ERR("invalid IPv6 data type: 0x%X", inFixedValues->incomingValue[idx].value.type);
-        ip[0] = ip[1] = ip[2] = ip[3] = 0;
-        return STATUS_INVALID_PARAMETER;
-    }
-
-    // copy and swap
-    ipV6 = (UINT32*) inFixedValues->incomingValue[idx].value.byteArray16->byteArray16;
-    for (i = 0; i < 4; i++) {
-        ip[i]= RtlUlongByteSwap(ipV6[i]);
-    }
-
-    return STATUS_SUCCESS;
-}
-
-void redir_from_callout(pportmaster_packet_info packetInfo, pportmaster_packet_info redirInfo, PNET_BUFFER nb, size_t ipHeaderSize, BOOL dns) {
-    void* packet;
-    ULONG packet_len;
-    NTSTATUS status;
-
-    // sanity check
-    if (!redirInfo) {
-        ERR("redirInfo is NULL!");
-    }
-    if (!packetInfo || !redirInfo || !nb || ipHeaderSize == 0) {
-        ERR("Invalid parameters");
-        return;
-    }
-
-    // DEBUG: print its TCP 4-tuple
-    INFO("Handling redir for %s", print_packet_info(packetInfo));
-
-    //Inbound traffic requires special treatment - dafuq?
-    if (packetInfo->direction == 1) {   //Inbound
-        status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
-        if (!NT_SUCCESS(status)) {
-            ERR("failed to retreat net buffer data start");
-            return;
-        }
-    }
-
-    //Create new Packet -> wrap it in new nb, so we don't need to shift this nb back.
-    status = copy_packet_data_from_nb(nb, 0, &packet, &packet_len);
-    if (!NT_SUCCESS(status)) {
-        ERR("copy_packet_data_from_nb 3: %d", status);
-        return;
-    }
-    //Now data should contain a full blown packet
-
-    // In order to be as clean as possible, we shift back nb, even though it may not be necessary.
-    if (packetInfo->direction == 1) {   //Inbound
-        NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
-    }
-    redir(packetInfo, redirInfo, packet, packet_len, dns);
-
-}
-
-NTSTATUS inject_packet(pportmaster_packet_info packetInfo, BOOL inbound, void *packet, ULONG packet_len) {
-    BOOL isLoopback = is_packet_loopback(packetInfo);
-    HANDLE handle = getInjectionHandle(packetInfo);
-    PNET_BUFFER_LIST injectNBL = NULL;
-    NTSTATUS status = 0;
-
-    status = wrap_packet_data_in_nb(packet, packet_len, &injectNBL);
-    if (!NT_SUCCESS(status)) {
-        ERR("wrap_packet_data_in_nb failed: %u", status);
-        portmaster_free(packet);
-        return status;
-    }
-
-    if (!inbound || isLoopback) {
-        status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
-                UNSPECIFIED_COMPARTMENT_ID, injectNBL, free_after_inject,
-                packet);
-        INFO("InjectNetworkSend executed: %s", print_packet_info(packetInfo));
-    } else {
-        status = FwpsInjectNetworkReceiveAsync(handle, NULL, 0,
-                UNSPECIFIED_COMPARTMENT_ID, packetInfo->interfaceIndex,
-                packetInfo->subInterfaceIndex, injectNBL, free_after_inject,
-                packet);
-        INFO("InjectNetworkReceive executed: %s", print_packet_info(packetInfo));
-    }
-
-    if (!NT_SUCCESS(status)) {
-        free_after_inject(packet, injectNBL, FALSE);
-    }
-    return status;
-}
-
-void redir(portmaster_packet_info* packetInfo, portmaster_packet_info* redirInfo, void* packet, ULONG packet_len, BOOL dns) {
-    PNET_BUFFER_LIST inject_nbl;
-    HANDLE handle= NULL;
-    NTSTATUS status;
-
-    // sanity check
-    if (!packetInfo || !redirInfo || !packet || packet_len == 0) {
-        ERR("Invalid parameters");
-        return;
-    }
-
-    INFO("About to modify headers for %s", print_packet_info(packetInfo));
-    INFO("Packet starts at 0p%p with %u bytes", packet, packet_len);
-
-    // Modifiy headers
-    if (packetInfo->ipV6 == 0) { // IPv4
-        ULONG ip_header_len = calc_ipv4_header_size(packet, packet_len);
-        if (ip_header_len > 0) { // IPv4 Header
-            PIPV4_HEADER ip_header = (PIPV4_HEADER) packet;
-
-            if (packetInfo->direction == 0) { // Outbound
-                ip_header->DstAddr = RtlUlongByteSwap(packetInfo->localIP[0]);
-                // IP_LOCALHOST is rejected by Windows Networkstack (nbl-status 0xc0000207, "STATUS_INVALID_ADDRESS_COMPONENT"
-                // Problem might be switching Network scope from "eth0" to "lo"
-                // Instead, just redir to the address the packet came from
-            } else {
-                ip_header->SrcAddr = RtlUlongByteSwap(redirInfo->remoteIP[0]);
-            }
-
-            // TCP
-            if (ip_header->Protocol == 6 && packet_len >= ip_header_len + 20 /* TCP Header */) {
-                PTCP_HEADER tcp_header = (PTCP_HEADER) ((UINT8*)packet + ip_header_len);
-
-                if (packetInfo->direction == 0) {
-                    if (dns) {
-                        tcp_header->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
-                    } else {
-                        tcp_header->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
-                    }
-                } else {
-                    tcp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
-                }
-
-            // UDP
-            } else if (ip_header->Protocol == 17 && packet_len >= ip_header_len + 8 /* UDP Header */) {
-                PUDP_HEADER udp_header = (PUDP_HEADER) ((UINT8*)packet + ip_header_len);
-
-                if (packetInfo->direction == 0) {
-                    if (dns) {
-                        udp_header->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
-                    } else {
-                        udp_header->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
-                    }
-                } else {
-                    udp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
-                }
-
-            } else {  //Neither UDP nor TCP -> We can only redirect UDP or TCP -> drop the rest
-                portmaster_free(packet);
-                WARN("Portmaster issued redirect for Non UDP or TCP Packet:");
-                WARN("%s", print_packet_info(packetInfo));
-                return;
-            }
-        } else { // not enough data for IPv4 Header
-            portmaster_free(packet);
-            WARN("IPv4 Packet too small:");
-            WARN("%s", print_packet_info(packetInfo));
-            return;
-        }
-    } else { // IPv6
-        ULONG ip_header_len = calc_ipv6_header_size(packet, packet_len, NULL);
-        if (ip_header_len > 0) { // IPv6 Header
-            PIPV6_HEADER ip_header = (PIPV6_HEADER) packet;
-            int i;
-
-            if (packetInfo->direction == 0) { // Outbound
-                for (i = 0; i < 4; i++) {
-                    ip_header->DstAddr[i]= RtlUlongByteSwap(packetInfo->localIP[i]);
-                }
-                // IP_LOCALHOST is rejected by Windows Networkstack (nbl-status 0xc0000207, "STATUS_INVALID_ADDRESS_COMPONENT"
-                // Problem might be switching Network scope from "eth0" to "lo"
-                // Instead, just redir to the address the packet came from
-            } else {
-                for (i = 0; i < 4; i++) {
-                    ip_header->SrcAddr[i]= RtlUlongByteSwap(redirInfo->remoteIP[i]);
-                }
-            }
-
-            // TCP
-            if (ip_header->NextHdr == 6 && packet_len >= ip_header_len + 20 /* TCP Header */) {
-                PTCP_HEADER tcp_header = (PTCP_HEADER) ((UINT8*)packet + ip_header_len);
-
-                if (packetInfo->direction == 0) {
-                    if (dns) {
-                        tcp_header->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
-                    } else {
-                        tcp_header->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
-                    }
-                } else {
-                    tcp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
-                }
-
-                // UDP
-            } else if (ip_header->NextHdr == 17 && packet_len >= ip_header_len + 8 /* UDP Header */) {
-                PUDP_HEADER udp_header = (PUDP_HEADER) ((UINT8*)packet + ip_header_len);
-
-                if (packetInfo->direction == 0) {
-                    if (dns) {
-                        udp_header->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
-                    } else {
-                        udp_header->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
-                    }
-                } else {
-                    udp_header->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
-                }
-
-            } else {  // Neither UDP nor TCP -> We can only redirect UDP or TCP -> drop the rest
-                portmaster_free(packet);
-                WARN("Portmaster issued redirect for Non UDP or TCP Packet:");
-                WARN("%s", print_packet_info(packetInfo));
-                return;
-            }
-        } else { // not enough data for IPv6 Header
-            portmaster_free(packet);
-            WARN("IPv6 Packet too small:");
-            WARN("%s", print_packet_info(packetInfo));
-            return;
-        }
-    }
-    INFO("Headers modified");
-
-    // Fix checksums, including TCP/UDP.
-    if (!packetInfo->ipV6) {
-        calc_ipv4_checksum(packet, packet_len, TRUE);
-    } else {
-        calc_ipv6_checksum(packet, packet_len, TRUE);
-    }
-
-    // re-inject ...
-
-    // Reset routing compartment ID, as we are changing where this is going to.
-    // This necessity is unconfirmed.
-    // Experience shows that using the compartment ID can sometimes cause errors.
-    // It seems safer to always use UNSPECIFIED_COMPARTMENT_ID.
-    // packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
-    status = inject_packet(packetInfo, packetInfo->direction == 1, packet, packet_len); // this call will free the packet even if the inject fails
-
-    if (!NT_SUCCESS(status)) {
-        ERR("redir -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-    }
-
-    return;
-}
-
-void send_icmp_blocked_packet(portmaster_packet_info* packetInfo, void* originalPacket, ULONG originalPacketLength, BOOL useLocalHost) {
-    // Only UDP is supported
-    if(packetInfo->protocol != 17) { // 17 -> UDP
-        return; // Not UDP
-    }
-
-    if(packetInfo->ipV6) {
-        // Initialize header for the original UDP packet
-        ULONG originalIPHeaderLength = calc_ipv6_header_size(originalPacket, originalPacketLength, NULL);
-        PIPV6_HEADER originalIPHeader = (PIPV6_HEADER) originalPacket;
-        UINT16 bytesToCopyFromOriginalPacket = (UINT16)originalPacketLength;
-
-        // Initialize variables
-        PNET_BUFFER_LIST injectNBL;
-        NTSTATUS status;
-        UINT16 headerLength = sizeof(IPV6_HEADER) + sizeof(ICMP_HEADER);
-        UINT16 packetLength = headerLength + bytesToCopyFromOriginalPacket;
-        BOOL injectIsInbound;
-
-        void *icmpPacket = NULL;
-        PIPV6_HEADER ipHeader;
-        PICMP_HEADER icmpHeader;
-
-        // Check if the packet exceeds the minimum MTU.
-        // The body of the ICMPv6: As much of invoking packet as possible without the ICMPv6 packet exceeding the minimum IPv6 MTU https://www.rfc-editor.org/rfc/rfc4443#section-3.1
-        // IPv6 requires that every link in the internet have an MTU of 1280 octets or greater https://www.ietf.org/rfc/rfc2460.txt -> 5. Packet Size Issues.
-        if(packetLength > 1280) {
-            bytesToCopyFromOriginalPacket = 1280 - headerLength;
-            packetLength = headerLength + bytesToCopyFromOriginalPacket;
-        }
-
-        // Allocate memory for the new packet
-        icmpPacket = portmaster_malloc(packetLength, FALSE);
-
-        // Initialize IPv6 header
-        ipHeader = (PIPV6_HEADER) icmpPacket;
-        ipHeader->Version = 6;
-        ipHeader->Length = sizeof(ICMP_HEADER) + bytesToCopyFromOriginalPacket;
-        ipHeader->NextHdr = 58; // 58 -> ICMPv6
-        ipHeader->HopLimit = 128;
-
-        // Use localhost as source and destination to bypass the windows firewall.
-        if(useLocalHost) {
-            ipHeader->SrcAddr[3] = IPv6_LOCALHOST_PART4_NETOWRK_ORDER; // loopback address ::1
-            ipHeader->DstAddr[3] = IPv6_LOCALHOST_PART4_NETOWRK_ORDER; // loopback address ::1
-        } else {
-            RtlCopyMemory(ipHeader->SrcAddr, originalIPHeader->DstAddr, sizeof(originalIPHeader->SrcAddr)); // Source becomes destination.
-            RtlCopyMemory(ipHeader->DstAddr, originalIPHeader->SrcAddr, sizeof(originalIPHeader->DstAddr)); // Destination becomes source.
-        }
-
-        icmpHeader = (PICMP_HEADER) ((UINT8*)icmpPacket + sizeof(IPV6_HEADER));
-        icmpHeader->Type = 1; // Destination Unreachable Message.
-        icmpHeader->Code = 4; // Port unreachable (the only code that closes the UDP connection on Windows 10).
-
-        // Calculate checksum for the original packet and copy it in the icmp body.
-        calc_ipv6_checksum(originalPacket, originalPacketLength, TRUE);
-        RtlCopyMemory((UINT8*)icmpHeader + sizeof(ICMP_HEADER), originalPacket, bytesToCopyFromOriginalPacket);
-
-        // Calculate checksum for the icmp packet
-        calc_ipv6_checksum(icmpPacket, packetLength, TRUE);
-
-        // Reverse diraction and inject packet
-        injectIsInbound = packetInfo->direction == 1 ? FALSE : TRUE;
-        status = inject_packet(packetInfo, injectIsInbound, icmpPacket, packetLength); // this call will free the packet even if the inject fails
-
-        if (!NT_SUCCESS(status)) {
-            ERR("send_icmp_blocked_packet ipv6 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-        }
-    } else {
-        // Initialize header for the original UDP packet
-        ULONG originalIPHeaderLength = calc_ipv4_header_size(originalPacket, originalPacketLength);
-        PIPV4_HEADER originalIPHeader = (PIPV4_HEADER) originalPacket;
-
-        // ICMP body is the original packet IP header + first 64bits (8 bytes) of the body https://www.rfc-editor.org/rfc/rfc792
-        UINT16 bytesToCopyFromOriginalPacket = (UINT16)originalIPHeaderLength + 8;
-
-        // Initialize variables
-        PNET_BUFFER_LIST injectNBL;
-        NTSTATUS status;
-        UINT16 headerLength = sizeof(IPV6_HEADER) + sizeof(ICMP_HEADER);
-        UINT16 packetLength = headerLength + bytesToCopyFromOriginalPacket;
-        void *icmpPacket = NULL; 
-        PIPV4_HEADER ipHeader;
-        PICMP_HEADER icmpHeader;
-        BOOL injectIsInbound;
-
-        // Check if the body is less then 8 bytes
-        if(bytesToCopyFromOriginalPacket < originalPacketLength) {
-            bytesToCopyFromOriginalPacket = (UINT16)originalPacketLength;
-            packetLength = headerLength + bytesToCopyFromOriginalPacket;
-        }
-
-        // Allocate memory for the new packet
-        icmpPacket = portmaster_malloc(packetLength, FALSE);
-
-        // Initialize IPv4 header
-        ipHeader = (PIPV4_HEADER) icmpPacket;
-        ipHeader->HdrLength = sizeof(IPV4_HEADER) / 4;
-        ipHeader->Version = 4;
-        ipHeader->TOS = 0;
-        ipHeader->Length = RtlUshortByteSwap(packetLength);
-        ipHeader->Id = 0;
-        ipHeader->Protocol = 1; // ICMP
-        ipHeader->TTL = 128;
-
-        // Use localhost as source and destination to bypass the Windows firewall
-        if(useLocalHost) {
-            ipHeader->SrcAddr = IPv4_LOCALHOST_IP_NETWORK_ORDER; // loopback address 127.0.0.1
-            ipHeader->DstAddr = IPv4_LOCALHOST_IP_NETWORK_ORDER; // loopback address 127.0.0.1
-        } else {
-            ipHeader->SrcAddr = originalIPHeader->DstAddr; // Source becomes destination
-            ipHeader->DstAddr = originalIPHeader->SrcAddr; // Destination becomes source
-        }
-
-        icmpHeader = (PICMP_HEADER) ((UINT8*)icmpPacket + sizeof(IPV4_HEADER));
-        icmpHeader->Type = 3; // Destination unreachable.
-        icmpHeader->Code = 3; // Destination port unreachable (the only code that closes the UDP connection on Windows 10).
-
-        // Calculate checksum for the original packet and copy it in the icmp body.
-        calc_ipv4_checksum(originalPacket, originalPacketLength, TRUE);
-        RtlCopyMemory(((UINT8*)icmpHeader + sizeof(ICMP_HEADER)), originalPacket, bytesToCopyFromOriginalPacket);
-
-        // Calculate checksum for the icmp packet
-        calc_ipv4_checksum(icmpPacket, packetLength, TRUE);
-
-        // Reverse diraction and inject packet
-        injectIsInbound = packetInfo->direction == 1 ? FALSE : TRUE;
-        status = inject_packet(packetInfo, injectIsInbound, icmpPacket, packetLength); // this call will free the packet even if the inject fails
-
-        if (!NT_SUCCESS(status)) {
-            ERR("send_icmp_blocked_packet ipv4 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-        }
-    }
-}
-
-void send_tcp_rst_packet(portmaster_packet_info* packetInfo, void* originalPacket, ULONG originalPacketLength) {
-    // Only TCP is supported
-    if(packetInfo->protocol != 6) {
-        return; // Not TCP
-    }
-
-    if(packetInfo->ipV6) {
-        // Initialize header for the original packet with SYN flag
-        ULONG originalIPHeaderLength = calc_ipv6_header_size(originalPacket, originalPacketLength, NULL);
-        PIPV6_HEADER originalIPHeader = (PIPV6_HEADER) originalPacket;
-        PTCP_HEADER originalTCPHeader = (PTCP_HEADER) ((UINT8*)originalPacket + originalIPHeaderLength);
-
-        // Initialize variables
-        PNET_BUFFER_LIST injectNBL;
-        NTSTATUS status;
-        UINT16 packetLength = sizeof(IPV6_HEADER) + sizeof(TCP_HEADER);
-        void *tcpResetPacket;
-        PIPV6_HEADER ipHeader;
-        PTCP_HEADER tcpHeader;
-        BOOL injectIsInbound;
-
-        // allocate memory for the reset packet
-        tcpResetPacket = portmaster_malloc(packetLength, FALSE);
-
-        // initialize IPv6 header
-        ipHeader = (PIPV6_HEADER) tcpResetPacket;
-        ipHeader->Version = 6;
-        ipHeader->Length = sizeof(TCP_HEADER);
-        ipHeader->NextHdr = packetInfo->protocol; // 6 -> TCP
-        ipHeader->HopLimit = 128;
-        RtlCopyMemory(ipHeader->DstAddr, originalIPHeader->SrcAddr, sizeof(originalIPHeader->SrcAddr)); // Source becomes destination
-        RtlCopyMemory(ipHeader->SrcAddr, originalIPHeader->DstAddr, sizeof(originalIPHeader->DstAddr)); // Destination becomes source
-
-        // Initialize TCP header
-        tcpHeader = (PTCP_HEADER) ((UINT8*)tcpResetPacket + sizeof(IPV6_HEADER));
-        tcpHeader->SrcPort = RtlUshortByteSwap(packetInfo->remotePort); // Source becomes destination
-        tcpHeader->DstPort = RtlUshortByteSwap(packetInfo->localPort); // Destination becomes source
-        tcpHeader->HdrLength = sizeof(TCP_HEADER) / 4;
-        tcpHeader->SeqNum = 0;
-        // We should acknowledge the SYN packet while doing the reset
-        tcpHeader->AckNum = RtlUlongByteSwap(RtlUlongByteSwap(originalTCPHeader->SeqNum) + 1);
-        tcpHeader->Ack = 1;
-        tcpHeader->Rst = 1;
-
-        calc_ipv6_checksum(tcpResetPacket, packetLength, TRUE);
-        
-        // Reverse diraction and inject packet
-        injectIsInbound = packetInfo->direction == 1 ? FALSE : TRUE;
-        status = inject_packet(packetInfo, injectIsInbound, tcpResetPacket, packetLength); // this call will free the packet even if the inject fails
-
-        if (!NT_SUCCESS(status)) {
-            ERR("send_icmp_blocked_packet ipv6 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-        }
-
-    } else {
-        // Initialize header for the original packet with SYN flag
-        ULONG originalIPHeaderLength = calc_ipv4_header_size(originalPacket, originalPacketLength);
-        PIPV4_HEADER originalIPHeader = (PIPV4_HEADER) originalPacket;
-        PTCP_HEADER originalTCPHeader = (PTCP_HEADER) ((UINT8*)originalPacket + originalIPHeaderLength);
-
-        // Initialize variables
-        PNET_BUFFER_LIST injectNBL;
-        NTSTATUS status;
-        UINT16 packetLength = sizeof(IPV4_HEADER) + sizeof(TCP_HEADER);
-        void *tcpResetPacket;
-        PIPV4_HEADER ipHeader;
-        PTCP_HEADER tcpHeader;
-        BOOL injectIsInbound;
-
-        // allocate memory for the reset packet
-        tcpResetPacket = portmaster_malloc(packetLength, FALSE);
-
-        // initialize IPv4 header
-        ipHeader = (PIPV4_HEADER) tcpResetPacket;
-        ipHeader->HdrLength = sizeof(IPV4_HEADER) / 4;
-        ipHeader->Version = 4;
-        ipHeader->TOS = 0;
-        ipHeader->Length = RtlUshortByteSwap(packetLength);
-        ipHeader->Id = 0;
-        ipHeader->Protocol = packetInfo->protocol;  // 6 -> TCP
-        ipHeader->TTL = 128;
-        ipHeader->DstAddr = originalIPHeader->SrcAddr; // Source becomes destination
-        ipHeader->SrcAddr = originalIPHeader->DstAddr; // Destination becomes source
-
-         // Initialize TCP header
-        tcpHeader = (PTCP_HEADER) ((UINT8*)tcpResetPacket + sizeof(IPV4_HEADER));
-        tcpHeader->SrcPort = originalTCPHeader->DstPort; // Source becomes destination
-        tcpHeader->DstPort = originalTCPHeader->SrcPort; // Destination becomes source
-        tcpHeader->HdrLength = sizeof(TCP_HEADER) / 4;
-        tcpHeader->SeqNum = 0;
-        // We should acknowledge the SYN packet while doing the reset
-        tcpHeader->AckNum = RtlUlongByteSwap(RtlUlongByteSwap(originalTCPHeader->SeqNum) + 1);
-        tcpHeader->Ack = 1;
-        tcpHeader->Rst = 1;
-
-        calc_ipv4_checksum(tcpResetPacket, packetLength, TRUE);
-
-        // Reverse diraction and inject packet
-        injectIsInbound = packetInfo->direction == 1 ? FALSE : TRUE;
-        status = inject_packet(packetInfo, injectIsInbound, tcpResetPacket, packetLength); // this call will free the packet even if the inject fails
-
-        if(!NT_SUCCESS(status)) {
-            ERR("send_icmp_blocked_packet ipv4 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-        }
-    }
-}
-
-void send_block_packet_if_possible(portmaster_packet_info* packetInfo, void* originalPacket, ULONG originalPacketLength) {
-    if(packetInfo->protocol == 6) { // TCP
-        send_tcp_rst_packet(packetInfo, originalPacket, originalPacketLength);
-    } else { // Everithing else
-        send_icmp_blocked_packet(packetInfo, originalPacket, originalPacketLength, TRUE);
-    }
-}
-
-void send_block_packet_if_possible_from_callout(portmaster_packet_info* packetInfo, PNET_BUFFER nb, size_t ipHeaderSize) {
-    void* packet;
-    ULONG packetLength;
-    NTSTATUS status;
-
-    if (!packetInfo || !nb || ipHeaderSize == 0) {
-        ERR("Invalid parameters");
-        return;
-    }
-
-    // Inbound traffic requires special treatment - dafuq?
-    if (packetInfo->direction == 1) {   //Inbound
-        status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
-        if (!NT_SUCCESS(status)) {
-            ERR("failed to retreat net buffer data start");
-            return;
-        }
-    }
-
-    // Create new Packet -> wrap it in new nb, so we don't need to shift this nb back.
-    status = copy_packet_data_from_nb(nb, 0, &packet, &packetLength);
-    if (!NT_SUCCESS(status)) {
-        ERR("copy_packet_data_from_nb 3: %d", status);
-        return;
-    }
-    // Now data should contain a full blown packet
-
-    // In order to be as clean as possible, we shift back nb, even though it may not be necessary.
-    if (packetInfo->direction == 1) {   //Inbound
-        NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
-    }
-
-    // Now we can send the RST (for TCP) or ICMP (for UDP) packet
-    send_block_packet_if_possible(packetInfo, packet, packetLength);
-    portmaster_free(packet);
-}
-
-static void free_after_inject(VOID *context, NET_BUFFER_LIST *nbl, BOOLEAN dispatch_level) {
-    PMDL mdl;
-    PNET_BUFFER nb;
-    UNREFERENCED_PARAMETER(dispatch_level);
-
-    // Sanity check.
-    if (!nbl) {
-        ERR("Invalid parameters");
-        return;
-    }
-
-#ifdef DEBUG_ON
-    // Check for NBL errors.
-    {
-        NDIS_STATUS status;
-        status = NET_BUFFER_LIST_STATUS(nbl);
-        if (status == STATUS_SUCCESS) {
-            INFO("injection success: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(context));
-        } else {
-            // Check here for status codes: http://errorco.de/win32/ntstatus-h/
-            ERR("injection failure: nbl_status=0x%x, %s", NET_BUFFER_LIST_STATUS(nbl), print_ipv4_packet(context));
-        }
-    }
-#endif // DEBUG
-
-    // Free allocated NBL/Mdl memory.
-    nb = NET_BUFFER_LIST_FIRST_NB(nbl);
-    mdl = NET_BUFFER_FIRST_MDL(nb);
-    IoFreeMdl(mdl);
-    FwpsFreeNetBufferList(nbl);
-
-    // Free packet, which is passed as context.
-    if (context != NULL) {
-        portmaster_free(context);
-    }
-}
-
 void respondWithVerdict(UINT32 id, verdict_t verdict) {
-    pportmaster_packet_info packetInfo;
-    void* packet;
-    size_t packet_len;
-    PNET_BUFFER_LIST inject_nbl;
-    NTSTATUS status;
-    KLOCK_QUEUE_HANDLE lock_handle;
-    HANDLE handle;
-    int rc;
-    BOOL temporary = FALSE;
-
     // sanity check
     if (id == 0 || verdict == 0) {
         ERR("Invalid parameters");
         return;
     }
 
+    bool temporary = false;
     if (verdict < 0) {
-        temporary = TRUE;
+        temporary = true;
         verdict = verdict * -1;
     }
 
     INFO("Trying to retrieve packet");
-    KeAcquireInStackQueuedSpinLock(&packetCacheLock, &lock_handle);
-    rc = retrieve_packet(packetCache, id, &packetInfo, &packet, &packet_len);
-    KeReleaseInStackQueuedSpinLock(&lock_handle);
+    KLOCK_QUEUE_HANDLE lockHandle = {0};
+    KeAcquireInStackQueuedSpinLock(&globalPacketCacheLock, &lockHandle);
+
+    PortmasterPacketInfo *packetInfo = NULL;
+    void *packet = NULL;
+    size_t packetLength = 0;
+    int rc = retrievePacket(globalPacketCache, id, &packetInfo, &packet, &packetLength);
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
 
     if (rc != 0) {
         // packet id was not in packet cache
-        INFO("reveiced verdict response for unknown packet id: %u", id);
+        INFO("received verdict response for unknown packet id: %u", id);
         return;
     }
-    INFO("received verdict responst for packet id: %u", id);
+    INFO("received verdict response for packet id: %u", id);
 
     //Store permanent verdicts in verdictCache
     if (!temporary) {
-        verdict_cache_t* verdictCache = verdictCacheV4;
-        KSPIN_LOCK* verdictCacheLock = &verdictCacheV4Lock;
-        pportmaster_packet_info packet_info_to_free;
-        int cleanRC;
+        VerdictCache *verdictCache = verdictCacheV4;
+        KSPIN_LOCK *verdictCacheLock = &verdictCacheV4Lock;
+        PortmasterPacketInfo *packetInfoToFree = NULL;
 
         // Switch to IPv6 cache and lock if needed.
         if (packetInfo->ipV6) {
@@ -755,26 +134,26 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
             verdictCacheLock = &verdictCacheV6Lock;
         }
 
-        // Acquire exlusive lock as we are changing the verdict cache.
-        KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lock_handle);
+        // Acquire exclusive lock as we are changing the verdict cache.
+        KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lockHandle);
 
         // Add to verdict cache
-        rc = add_verdict(verdictCache, packetInfo, verdict);
+        rc = addVerdict(verdictCache, packetInfo, verdict);
 
         // Free after adding.
-        cleanRC = clean_verdict_cache(verdictCache, &packet_info_to_free);
+        int cleanRC = cleanVerdictCache(verdictCache, &packetInfoToFree);
 
-        KeReleaseInStackQueuedSpinLock(&lock_handle);
+        KeReleaseInStackQueuedSpinLock(&lockHandle);
 
         // Free returned packet info.
         if (cleanRC == 0) {
-            portmaster_free(packet_info_to_free);
+            portmasterFree(packetInfoToFree);
         }
 
         //If verdict could not be added, drop and free the packet
         if (rc != 0) {
-            portmaster_free(packetInfo);
-            portmaster_free(packet);
+            portmasterFree(packetInfo);
+            portmasterFree(packet);
             return;
         }
     }
@@ -782,41 +161,41 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     //Handle Packet according to Verdict
     switch (verdict) {
         case PORTMASTER_VERDICT_DROP:
-            INFO("PORTMASTER_VERDICT_DROP: %s", print_packet_info(packetInfo));
-            portmaster_free(packet);
+            INFO("PORTMASTER_VERDICT_DROP: %s", printPacketInfo(packetInfo));
+            portmasterFree(packet);
             return;
         case PORTMASTER_VERDICT_BLOCK:
-            INFO("PORTMASTER_VERDICT_BLOCK: %s", print_packet_info(packetInfo));
-            send_block_packet_if_possible(packetInfo, packet, packet_len);
-            portmaster_free(packet);
+            INFO("PORTMASTER_VERDICT_BLOCK: %s", printPacketInfo(packetInfo));
+            sendBlockPacket(packetInfo, packet, packetLength);
+            portmasterFree(packet);
             return;
         case PORTMASTER_VERDICT_ACCEPT:
-            DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", print_packet_info(packetInfo));
+            DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
             break; // ACCEPT
         case PORTMASTER_VERDICT_REDIR_DNS:
-            INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", print_packet_info(packetInfo));
-            redir(packetInfo, packetInfo, packet, packet_len, TRUE);
-            // redir will free the packet memory
+            INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", printPacketInfo(packetInfo));
+            redirectPacket(packetInfo, packetInfo, packet, packetLength, true);
+            // redirect will free the packet memory
             return;
         case PORTMASTER_VERDICT_REDIR_TUNNEL:
-            INFO("PORTMASTER_VERDICT_REDIR_TUNNEL: %s", print_packet_info(packetInfo));
-            redir(packetInfo, packetInfo, packet, packet_len, FALSE);
-            // redir will free the packet memory
+            INFO("PORTMASTER_VERDICT_REDIR_TUNNEL: %s", printPacketInfo(packetInfo));
+            redirectPacket(packetInfo, packetInfo, packet, packetLength, false);
+            // redirect will free the packet memory
             return;
         default:
-            WARN("unknown verdict: 0x%x {%s}", print_packet_info(packetInfo));
-            portmaster_free(packet);
+            WARN("unknown verdict: 0x%x {%s}", printPacketInfo(packetInfo));
+            portmasterFree(packet);
             return;
     }
 
     // Fix checksums, including TCP/UDP.
     if (!packetInfo->ipV6) {
-        calc_ipv4_checksum(packet, packet_len, TRUE);
+        calcIPv4Checksum(packet, packetLength, true);
     } else {
-        calc_ipv6_checksum(packet, packet_len, TRUE);
+        calcIPv6Checksum(packet, packetLength, true);
     }
 
-    status = inject_packet(packetInfo, packetInfo->direction == 1, packet, packet_len); // this call will free the packet even if the inject fails
+    NTSTATUS status = injectPacket(packetInfo, packetInfo->direction, packet, packetLength, false); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
         ERR("respondWithVerdict -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
@@ -824,82 +203,28 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
 
     // If verdict is temporary, free packetInfo
     if (temporary) {
-        portmaster_free(packetInfo);
+        portmasterFree(packetInfo);
     }
     // otherwise, keep packetInfo because it is referenced by verdict_cache
 
     INFO("Good Bye respondWithVerdict");
-    return;
-}
-
-void copy_and_inject(portmaster_packet_info* packetInfo, PNET_BUFFER nb, UINT32 ipHeaderSize) {
-    NTSTATUS status;
-    HANDLE handle;
-    void* packet;
-    ULONG packet_len;
-    PNET_BUFFER_LIST inject_nbl;
-
-    // Retreat buffer data start for inbound packet.
-    if (packetInfo->direction == 1) { //Inbound
-        status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
-        if (!NT_SUCCESS(status)) {
-            ERR("copy_and_inject > failed to retreat net buffer data start");
-            return;
-        }
-    }
-
-    // Copy the packet data.
-    status = copy_packet_data_from_nb(nb, 0, &packet, &packet_len);
-    if (!NT_SUCCESS(status)) {
-        ERR("copy_and_inject > copy_packet_data_from_nb failed: %d", status);
-        return;
-    }
-
-    // Advance data start back to original position.
-    if (packetInfo->direction == 1) {   //Inbound
-        NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
-    }
-
-    // Fix checksums, including TCP/UDP.
-    if (!packetInfo->ipV6) {
-        calc_ipv4_checksum(packet, packet_len, TRUE);
-    } else {
-        calc_ipv6_checksum(packet, packet_len, TRUE);
-    }
-
-    status = inject_packet(packetInfo, packetInfo->direction == 1, packet, packet_len); // this call will free the packet even if the inject fails
-
-    if (!NT_SUCCESS(status)) {
-        ERR("copy_and_inject -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
-    }
 }
 
 /******************************************************************
  * Classify Functions
  ******************************************************************/
 FWP_ACTION_TYPE classifySingle(
-    portmaster_packet_info* packetInfo,
-    verdict_cache_t* verdictCache,
+    PortmasterPacketInfo* packetInfo,
+    VerdictCache *verdictCache,
     KSPIN_LOCK* verdictCacheLock,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     PNET_BUFFER nb,
     UINT32 ipHeaderSize
     ) {
-    int offset;
-    verdict_t verdict;
-    int rc;
-    KLOCK_QUEUE_HANDLE lock_handle_vc, lock_handle_pc;
-    pportmaster_packet_info copiedPacketInfo = NULL, redirInfo = NULL;
-    PPM_IPHDR ip_header;
-    UINT16 srcPort, dstPort;
-    ULONG maxBytes, data_len;
-    NTSTATUS status;
-    void* data;
-    BOOL copiedNBForPacketInfo= FALSE;
-    HANDLE handle;
-
+    NTSTATUS status = STATUS_SUCCESS;
+    
     //Inbound traffic requires special treatment - dafuq?
-    if (packetInfo->direction == 1) { //Inbound
+    if (packetInfo->direction == DIRECTION_INBOUND) {
         status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
         if (!NT_SUCCESS(status)) {
             ERR("failed to retreat net buffer data start");
@@ -908,42 +233,48 @@ FWP_ACTION_TYPE classifySingle(
     }
 
 #ifdef DEBUG_ON
-    status = borrow_packet_data_from_nb(nb, ipHeaderSize, &data);
-    if (NT_SUCCESS(status)) {
-        PPM_IPHDR p = (PPM_IPHDR) data;
-        DEBUG("[v6=%d, dir=%d] V=%d, HL=%d, TOS=%d, TL=%d, ID=%d, FRAGO=%d, TTL=%d, P=%d, SUM=%d, SRC=%d.%d.%d.%d, DST=%d.%d.%d.%d",
-            packetInfo->ipV6,
-            packetInfo->direction,
-            p->Version, p->HdrLength, p->TOS,
-            RtlUshortByteSwap(p->Length),
-            RtlUshortByteSwap(p->Id),
-            RtlUshortByteSwap(p->FragOff),
-            p->TTL, p->Protocol,
-            RtlUshortByteSwap(p->Checksum),
-            FORMAT_ADDR(RtlUlongByteSwap(p->SrcAddr)),
-            FORMAT_ADDR(RtlUlongByteSwap(p->DstAddr)));
+    {
+        void* data = NULL;
+        status = borrowPacketDataFromNB(nb, ipHeaderSize, &data);
+        if (NT_SUCCESS(status)) {
+            IPv4Header* p = (IPv4Header*)data;
+            DEBUG("[v6=%d, dir=%d] V=%d, HL=%d, TOS=%d, TL=%d, ID=%d, FRAGO=%d, TTL=%d, P=%d, SUM=%d, SRC=%d.%d.%d.%d, DST=%d.%d.%d.%d",
+                packetInfo->ipV6,
+                packetInfo->direction,
+                p->Version, p->HdrLength, p->TOS,
+                RtlUshortByteSwap(p->Length),
+                RtlUshortByteSwap(p->Id),
+                RtlUshortByteSwap(p->FragOff0),
+                p->TTL, p->Protocol,
+                RtlUshortByteSwap(p->Checksum),
+                FORMAT_ADDR(RtlUlongByteSwap(p->SrcAddr)),
+                FORMAT_ADDR(RtlUlongByteSwap(p->DstAddr)));
+        }
     }
 #endif // DEBUG
 
-    status = borrow_packet_data_from_nb(nb, ipHeaderSize + 4, &data);
+    bool copiedNBForPacketInfo = false;
+    size_t dataLength = 0;
+    void *data = NULL;
+    status = borrowPacketDataFromNB(nb, ipHeaderSize + 4, &data);
     if (!NT_SUCCESS(status)) {
-        ULONG req_bytes= ipHeaderSize + 4;
-        INFO("borrow_packet_data_from_nb could not return IPHeader+4B, status=0x%X -> copy_packet_data_from_nb", status);
-        // TODO: if we start to use copy_packet_data_from_nb here, free space afterwards!
-        status = copy_packet_data_from_nb(nb, req_bytes, &data, &data_len);
+        size_t reqBytes = ipHeaderSize + 4;
+        INFO("borrowPacketDataFromNB could not return IPHeader+4B, status=0x%X -> copyPacketDataFromNB", status);
+        // TODO: if we start to use copyPacketDataFromNB here, free space afterwards!
+        status = copyPacketDataFromNB(nb, reqBytes, &data, &dataLength);
         if (!NT_SUCCESS(status)) {
-            ERR("copy_packet_data_from_nb could not copy IP Header+4 bytes, status=x%X, BLOCK", status);
+            ERR("copyPacketDataFromNB could not copy IP Header+4 bytes, status=x%X, BLOCK", status);
             return FWP_ACTION_BLOCK;
         }
 
         // check if we got enough data
-        if (data_len < req_bytes) {
-            ERR("Requested %u bytes, but received %u bytes (ipV6=%i, protocol=%u, status=0x%X)", req_bytes, data_len, packetInfo->ipV6, packetInfo->protocol, status);
-            portmaster_free(data);
+        if (dataLength < reqBytes) {
+            ERR("Requested %u bytes, but received %u bytes (ipV6=%i, protocol=%u, status=0x%X)", reqBytes, dataLength, packetInfo->ipV6, packetInfo->protocol, status);
+            portmasterFree(data);
             return FWP_ACTION_BLOCK;
         }
 
-        copiedNBForPacketInfo = TRUE;
+        copiedNBForPacketInfo = true;
     }
 
     // get protocol
@@ -954,16 +285,18 @@ FWP_ACTION_TYPE classifySingle(
     }
 
     // get ports
+    UINT16 srcPort = 0;
+    UINT16 dstPort = 0;
     switch (packetInfo->protocol) {
-        case 6: // TCP
-        case 17: // UDP
-        case 33: // DCCP
-        case 136: // UDP Lite
+        case PROTOCOL_TCP:
+        case PROTOCOL_UDP: // UDP
+        case PROTOCOL_DCCP: // DCCP
+        case PROTOCOL_UDPLite: // UDP Lite
             RtlCopyBytes((void*) &srcPort, (void*) ((UINT8*)data+ipHeaderSize), 2);
-            srcPort= RtlUshortByteSwap(srcPort);
+            srcPort = RtlUshortByteSwap(srcPort);
             RtlCopyBytes((void*) &dstPort, (void*) ((UINT8*)data+ipHeaderSize+2), 2);
             dstPort= RtlUshortByteSwap(dstPort);
-            if (packetInfo->direction == 1) { //Inbound
+            if (packetInfo->direction == DIRECTION_INBOUND) {
                 packetInfo->localPort = dstPort;
                 packetInfo->remotePort = srcPort;
             } else {
@@ -978,24 +311,26 @@ FWP_ACTION_TYPE classifySingle(
 
     // free if copied
     if (copiedNBForPacketInfo) {
-        portmaster_free(data);
+        portmasterFree(data);
     }
 
     //Shift back
-    if (packetInfo->direction == 1) { //Inbound
+    if (packetInfo->direction == DIRECTION_INBOUND) {
         NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
     }
 
     // Set default verdict.
-    verdict = PORTMASTER_VERDICT_GET;
+    verdict_t verdict = PORTMASTER_VERDICT_GET;
 
     // Lock to check verdict cache.
-    KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lock_handle_vc);
+    KLOCK_QUEUE_HANDLE lockHandleVC = {0};
+    KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lockHandleVC);
 
     // First check if the packet is a DNAT response.
-    if (packetInfo->direction == 1 &&
+    PortmasterPacketInfo* redirInfo = NULL;
+    if (packetInfo->direction == DIRECTION_INBOUND &&
         (packetInfo->remotePort == PORT_PM_SPN_ENTRY || packetInfo->remotePort == PORT_DNS)) {
-        verdict = check_reverse_redir(verdictCache, packetInfo, &redirInfo);
+        verdict = checkReverseRedirect(verdictCache, packetInfo, &redirInfo);
 
         // Verdicts returned by check_reverse_redir must only be
         // PORTMASTER_VERDICT_REDIR_DNS or PORTMASTER_VERDICT_REDIR_TUNNEL.
@@ -1006,41 +341,41 @@ FWP_ACTION_TYPE classifySingle(
 
     // Check verdict normally if we did not detect a packet that should be reverse DNAT-ed.
     if (verdict == PORTMASTER_VERDICT_GET) {
-        verdict = check_verdict(verdictCache, packetInfo);
+        verdict = checkVerdict(verdictCache, packetInfo);
 
         // If packet should be DNAT-ed set redirInfo to packetInfo.
         if (verdict == PORTMASTER_VERDICT_REDIR_DNS || verdict == PORTMASTER_VERDICT_REDIR_TUNNEL) {
             redirInfo = packetInfo;
         }
     }
-    KeReleaseInStackQueuedSpinLock(&lock_handle_vc);
+    KeReleaseInStackQueuedSpinLock(&lockHandleVC);
 
     switch (verdict) {
         case PORTMASTER_VERDICT_DROP:
-            INFO("PORTMASTER_VERDICT_DROP: %s", print_packet_info(packetInfo));
+            INFO("PORTMASTER_VERDICT_DROP: %s", printPacketInfo(packetInfo));
             return FWP_ACTION_BLOCK;
 
         case PORTMASTER_VERDICT_BLOCK:
-            INFO("PORTMASTER_VERDICT_BLOCK: %s", print_packet_info(packetInfo));
-            send_block_packet_if_possible_from_callout(packetInfo, nb, ipHeaderSize);
+            INFO("PORTMASTER_VERDICT_BLOCK: %s", printPacketInfo(packetInfo));
+            sendBlockPacketFromCallout(packetInfo, nb, ipHeaderSize);
             return FWP_ACTION_BLOCK;
 
         case PORTMASTER_VERDICT_ACCEPT:
-            INFO("PORTMASTER_VERDICT_ACCEPT: %s", print_packet_info(packetInfo));
+            INFO("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
             return FWP_ACTION_PERMIT;
 
         case PORTMASTER_VERDICT_REDIR_DNS:
-            INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", print_packet_info(packetInfo));
-            redir_from_callout(packetInfo, redirInfo, nb, ipHeaderSize, TRUE);
+            INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", printPacketInfo(packetInfo));
+            redirectPacketFromCallout(packetInfo, redirInfo, nb, ipHeaderSize, true);
             return FWP_ACTION_NONE; // We use FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
 
         case PORTMASTER_VERDICT_REDIR_TUNNEL:
-            INFO("PORTMASTER_VERDICT_REDIR_TUNNEL: %s", print_packet_info(packetInfo));
-            redir_from_callout(packetInfo, redirInfo, nb, ipHeaderSize, FALSE);
+            INFO("PORTMASTER_VERDICT_REDIR_TUNNEL: %s", printPacketInfo(packetInfo));
+            redirectPacketFromCallout(packetInfo, redirInfo, nb, ipHeaderSize, false);
             return FWP_ACTION_NONE; // We use FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
 
         case PORTMASTER_VERDICT_GET:
-            INFO("PORTMASTER_VERDICT_GET: %s", print_packet_info(packetInfo));
+            INFO("PORTMASTER_VERDICT_GET: %s", printPacketInfo(packetInfo));
             // Continue with operation to send verdict request.
 
             // We will return FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
@@ -1054,17 +389,15 @@ FWP_ACTION_TYPE classifySingle(
             return FWP_ACTION_BLOCK;
 
         default:
-            WARN("unknown verdict: 0x%x {%s}", print_packet_info(packetInfo));
+            WARN("unknown verdict: 0x%x {%s}", printPacketInfo(packetInfo));
             return FWP_ACTION_BLOCK;
     }
 
     // Handle packet of unknown connection.
     {
-        PDATA_ENTRY dentry;
-        pportmaster_packet_info copied_packet_info;
-        BOOL fast_tracked = FALSE;
-        UINT32 id;
-        int rc;
+        DataEntry *dentry = NULL;
+        bool fastTracked = false;
+        int rc = 0;
 
         // Get the process ID.
         if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_PROCESS_ID)) {
@@ -1077,7 +410,7 @@ FWP_ACTION_TYPE classifySingle(
         // TODO: Use this for all localhost communication.
         // TODO: Then, check the incoming part in the Portmaster together with the outgoing part.
         if (
-            packetInfo->direction == 1 &&
+            packetInfo->direction == DIRECTION_INBOUND &&
             (packetInfo->localPort == PORT_DNS ||
                 packetInfo->localPort == PORT_PM_API ||
                 packetInfo->localPort == PORT_PM_SPN_ENTRY) &&
@@ -1086,54 +419,56 @@ FWP_ACTION_TYPE classifySingle(
             packetInfo->localIP[2] == packetInfo->remoteIP[2] &&
             packetInfo->localIP[3] == packetInfo->remoteIP[3]
         ) {
-            fast_tracked = TRUE;
+            fastTracked = true;
             packetInfo->flags |= PM_STATUS_FAST_TRACK_PERMITTED;
 
-            INFO("Fast-tracking %s", print_packet_info(packetInfo));
+            INFO("Fast-tracking %s", printPacketInfo(packetInfo));
         } else {
-            INFO("Getting verdict for %s", print_packet_info(packetInfo));
+            INFO("Getting verdict for %s", printPacketInfo(packetInfo));
         }
 
         // allocate queue entry and copy packetInfo
-        dentry= portmaster_malloc(sizeof(DATA_ENTRY), FALSE);
+        dentry = portmasterMalloc(sizeof(DataEntry), false);
         if (!dentry) {
-            ERR("Insufficient Resources for mallocating dentry");
+            ERR("Insufficient Resources for allocating dentry");
             return FWP_ACTION_NONE;
         }
-        copied_packet_info = portmaster_malloc(sizeof(portmaster_packet_info), FALSE);
-        if (!copied_packet_info) {
-            ERR("Insufficient Resources for mallocating copied_packet_info");
+        PortmasterPacketInfo *copiedPacketInfo = portmasterMalloc(sizeof(PortmasterPacketInfo), false);
+        if (!copiedPacketInfo) {
+            ERR("Insufficient Resources for allocating copiedPacketInfo");
             // TODO: free other allocated memory.
             return FWP_ACTION_NONE;
         }
-        RtlCopyMemory(copied_packet_info, packetInfo, sizeof(portmaster_packet_info));
-        dentry->ppacket = copied_packet_info;
+        RtlCopyMemory(copiedPacketInfo, packetInfo, sizeof(PortmasterPacketInfo));
+        dentry->packet = copiedPacketInfo;
+
+        KLOCK_QUEUE_HANDLE lockHandlePC;
 
         // If fast-tracked, add verdict to cache immediately.
-        if (fast_tracked) {
-            pportmaster_packet_info packet_info_to_free;
+        if (fastTracked) {
+            PortmasterPacketInfo *packet_info_to_free;
             int cleanRC;
 
-            // Acquire exlusive lock as we are changing the verdict cache.
-            KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lock_handle_vc);
+            // Acquire exclusive lock as we are changing the verdict cache.
+            KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lockHandleVC);
 
             // Add to verdict cache
-            rc = add_verdict(verdictCache, copied_packet_info, PORTMASTER_VERDICT_ACCEPT);
+            rc = addVerdict(verdictCache, copiedPacketInfo, PORTMASTER_VERDICT_ACCEPT);
 
             // Free after adding.
-            cleanRC = clean_verdict_cache(verdictCache, &packet_info_to_free);
+            cleanRC = cleanVerdictCache(verdictCache, &packet_info_to_free);
 
-            KeReleaseInStackQueuedSpinLock(&lock_handle_vc);
+            KeReleaseInStackQueuedSpinLock(&lockHandleVC);
 
             // Free returned packet info.
             if (cleanRC == 0) {
-                portmaster_free(packet_info_to_free);
+                portmasterFree(packet_info_to_free);
             }
 
             // In case of failure, abort and free copied data.
             if (rc != 0) {
                 ERR("failed to add verdict: %d", rc);
-                portmaster_free(copied_packet_info);
+                portmasterFree(copiedPacketInfo);
                 // TODO: free other allocated memory.
                 return FWP_ACTION_NONE;
             }
@@ -1141,8 +476,8 @@ FWP_ACTION_TYPE classifySingle(
         } else {
             // If not fast-tracked, copy the packet and register it.
 
-            //Inbound traffic requires special treatment - this bitshifterei is a special source of error ;-)
-            if (packetInfo->direction == 1) { //Inbound
+            //Inbound traffic requires special treatment - this bit shifting is a special source of error ;-)
+            if (packetInfo->direction == DIRECTION_INBOUND) {
                 status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
                 if (!NT_SUCCESS(status)) {
                     ERR("failed to retreat net buffer data start");
@@ -1152,46 +487,46 @@ FWP_ACTION_TYPE classifySingle(
             }
 
             // Copy the packet data.
-            status = copy_packet_data_from_nb(nb, 0, &data, &data_len);
+            status = copyPacketDataFromNB(nb, 0, &data, &dataLength);
             if (!NT_SUCCESS(status)) {
-                ERR("copy_packet_data_from_nb 2: %d", status);
+                ERR("copyPacketDataFromNB 2: %d", status);
                 // TODO: free other allocated memory.
                 return FWP_ACTION_NONE;
             }
-            copied_packet_info->packetSize = data_len;
-            INFO("copy_packet_data_from_nb rc=%d, data_len=%d", status, data_len);
+            copiedPacketInfo->packetSize = (UINT32)dataLength;
+            INFO("copyPacketDataFromNB rc=%d, dataLength=%d", status, dataLength);
 
             // In order to be as clean as possible, we shift back nb, even though it may not be necessary.
-            if (packetInfo->direction == 1) { //Inbound
+            if (packetInfo->direction == DIRECTION_INBOUND) {
                 NdisAdvanceNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
             }
 
             // Register packet.
             DEBUG("trying to register packet");
-            KeAcquireInStackQueuedSpinLock(&packetCacheLock, &lock_handle_pc);
+            KeAcquireInStackQueuedSpinLock(&globalPacketCacheLock, &lockHandlePC);
             // Explicit lock is required, because two or more callouts can run simultaneously.
-            copied_packet_info->id = register_packet(packetCache, copied_packet_info, data, data_len);
-            KeReleaseInStackQueuedSpinLock(&lock_handle_pc);
-            INFO("registered packet with ID %u: %s", copied_packet_info->id, print_ipv4_packet(data));
+            copiedPacketInfo->id = registerPacket(globalPacketCache, copiedPacketInfo, data, dataLength);
+            KeReleaseInStackQueuedSpinLock(&lockHandlePC);
+            INFO("registered packet with ID %u: %s", copiedPacketInfo->id, printIpv4Packet(data));
         }
 
         // send to queue
-        /* queuedEntries = */ KeInsertQueue(global_io_queue, &(dentry->entry));
+        /* queuedEntries = */ KeInsertQueue(globalIOQueue, &(dentry->entry));
 
         // attempt to clean packet cache
         {
-            pportmaster_packet_info packet_info_to_free;
-            void* data_to_free;
-            KeAcquireInStackQueuedSpinLock(&packetCacheLock, &lock_handle_pc);
-            rc = clean_packet_cache(packetCache, &packet_info_to_free, &data_to_free);
-            KeReleaseInStackQueuedSpinLock(&lock_handle_pc);
+            PortmasterPacketInfo *packetInfoToFree = NULL;
+            void* dataToFree = NULL;
+            KeAcquireInStackQueuedSpinLock(&globalPacketCacheLock, &lockHandlePC);
+            rc = cleanPacketCache(globalPacketCache, &packetInfoToFree, &dataToFree);
+            KeReleaseInStackQueuedSpinLock(&lockHandlePC);
             if (rc == 0) {
-                portmaster_free(packet_info_to_free);
-                portmaster_free(data_to_free);
+                portmasterFree(packetInfoToFree);
+                portmasterFree(dataToFree);
             }
         }
 
-        if (fast_tracked) {
+        if (fastTracked) {
             return FWP_ACTION_PERMIT;
         }
         return FWP_ACTION_NONE;
@@ -1199,8 +534,8 @@ FWP_ACTION_TYPE classifySingle(
 }
 
 void classifyMultiple(
-    portmaster_packet_info* packetInfo,
-    verdict_cache_t* verdictCache,
+    PortmasterPacketInfo* packetInfo,
+    VerdictCache* verdictCache,
     KSPIN_LOCK* verdictCacheLock,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
@@ -1223,15 +558,6 @@ void classifyMultiple(
      * Source (ish): https://docs.microsoft.com/en-us/windows/win32/fwp/ale-stateful-filtering
      */
 
-    // Define variables.
-    FWPS_PACKET_INJECTION_STATE injection_state;
-    PNET_BUFFER_LIST nbl;
-    PNET_BUFFER nb;
-    UINT32 ipHeaderSize;
-    HANDLE handle;
-    UINT32 nbl_loop_i = 0;
-    UINT32 nb_loop_i = 0;
-
     // First, run checks and get data that applies to all packets.
 
     // sanity check
@@ -1246,14 +572,14 @@ void classifyMultiple(
     }
 
     // Get injection handle.
-    handle = getInjectionHandle(packetInfo);
+    HANDLE handle = getInjectionHandleForPacket(packetInfo);
 
     // Interpret layer data as netbuffer list and check if it's a looping packet.
     // Packets created/injected by us will loop back to us.
-    nbl = (PNET_BUFFER_LIST) layerData;
-    injection_state = FwpsQueryPacketInjectionState(handle, nbl, NULL);
-    if (injection_state == FWPS_PACKET_INJECTED_BY_SELF ||
-        injection_state == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
+    PNET_BUFFER_LIST nbl = (PNET_BUFFER_LIST) layerData;
+    FWPS_PACKET_INJECTION_STATE injectionState = FwpsQueryPacketInjectionState(handle, nbl, NULL);
+    if (injectionState == FWPS_PACKET_INJECTED_BY_SELF ||
+        injectionState == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
         classifyOut->actionType = FWP_ACTION_PERMIT;
 
         // We must always hard permit here, as the Windows Firewall sometimes
@@ -1262,14 +588,14 @@ void classifyMultiple(
         // Note: Hard Permit is now the default and is set immediately in the
         // callout.
 
-        INFO("packet was in loop, injection_state= %d ", injection_state);
+        INFO("packet was in loop, injectionState= %d ", injectionState);
         return;
     }
 
     #ifdef DEBUG_ON
     // Print if packet is injected by someone else for debugging purposes.
-    if (injection_state == FWPS_PACKET_INJECTED_BY_OTHER) {
-        INFO("packet was injected by other, injection_state= %d ", injection_state);
+    if (injectionState == FWPS_PACKET_INJECTED_BY_OTHER) {
+        INFO("packet was injected by other, injectionState= %d ", injectionState);
     }
     #endif // DEBUG
 
@@ -1278,11 +604,12 @@ void classifyMultiple(
     if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_FRAGMENT_DATA) &&
         inMetaValues->fragmentMetadata.fragmentOffset != 0) {
         classifyOut->actionType = FWP_ACTION_PERMIT;
-        INFO("Permitting fragmented packet: %s", print_packet_info(packetInfo));
+        INFO("Permitting fragmented packet: %s", printPacketInfo(packetInfo));
         return;
     }
 
     // get header size
+    UINT32 ipHeaderSize = 0;
     if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_IP_HEADER_SIZE)) {
         ipHeaderSize = inMetaValues->ipHeaderSize;
     } else {
@@ -1300,29 +627,31 @@ void classifyMultiple(
     // Docs say that multiple NBs can only happen for outbound data.
 
     // Iterate over net buffer lists.
+    UINT32 nblLoopI = 0;
+    UINT32 nbLoopI = 0;
     for (; nbl != NULL; nbl = NET_BUFFER_LIST_NEXT_NBL(nbl)) {
 
         // Get first netbuffer from list.
-        nb = NET_BUFFER_LIST_FIRST_NB(nbl);
+        PNET_BUFFER nb = NET_BUFFER_LIST_FIRST_NB(nbl);
 
         // Loop guard.
-        nbl_loop_i++;
-        DEBUG("handling NBL #%d at 0p%p", nbl_loop_i, nbl);
-        if (nbl_loop_i > 100) {
+        nblLoopI++;
+        DEBUG("handling NBL #%d at 0p%p", nblLoopI, nbl);
+        if (nblLoopI > 100) {
             ERR("we are looooooopin! wohooooo! NOT.");
             classifyOut->actionType = FWP_ACTION_BLOCK;
             return;
         }
-        nb_loop_i = 0;
+        nbLoopI = 0;
 
         // Iterate over net buffers.
         for (; nb != NULL; nb = NET_BUFFER_NEXT_NB(nb)) {
             FWP_ACTION_TYPE action;
 
             // Loop guard.
-            nb_loop_i++;
-            DEBUG("handling NB #%d at 0p%p", nb_loop_i, nb);
-            if (nb_loop_i > 1000) {
+            nbLoopI++;
+            DEBUG("handling NB #%d at 0p%p", nbLoopI, nb);
+            if (nbLoopI > 1000) {
                 ERR("we are looooooopin! wohooooo! NOT.");
                 classifyOut->actionType = FWP_ACTION_BLOCK;
                 return;
@@ -1345,18 +674,18 @@ void classifyMultiple(
                 // cache for the first packet, all other NBs will have the
                 // same verdict, as all packets in an NBL belong to the same
                 // connection. So we can directly accept all of them at once.
-                if (nbl_loop_i == 1 && nb_loop_i == 1 && NET_BUFFER_LIST_NEXT_NBL(nbl) == NULL) {
+                if (nblLoopI == 1 && nbLoopI == 1 && NET_BUFFER_LIST_NEXT_NBL(nbl) == NULL) {
                     #ifdef DEBUG_ON
                     for (nb = NET_BUFFER_NEXT_NB(nb); nb != NULL; nb = NET_BUFFER_NEXT_NB(nb)) {
                         // Loop guard.
-                        nb_loop_i++;
-                        if (nb_loop_i > 1000) {
+                        nbLoopI++;
+                        if (nbLoopI > 1000) {
                             ERR("we are looooooopin! wohooooo! NOT.");
                             classifyOut->actionType = FWP_ACTION_BLOCK;
                             return;
                         }
                     }
-                    DEBUG("permitting whole NBL with %d NBs", nb_loop_i);
+                    DEBUG("permitting whole NBL with %d NBs", nbLoopI);
                     #endif // DEBUG
                     classifyOut->actionType = FWP_ACTION_PERMIT;
                     return;
@@ -1364,7 +693,7 @@ void classifyMultiple(
 
                 // In any other case, we need to re-inject the packet, as
                 // returning FWP_ACTION_PERMIT would permit all NBLs.
-                copy_and_inject(packetInfo, nb, ipHeaderSize);
+                copyAndInject(packetInfo, nb, ipHeaderSize);
                 break;
 
             case FWP_ACTION_BLOCK:
@@ -1375,7 +704,7 @@ void classifyMultiple(
                 // cache for the first packet, all other NBs will have the
                 // same verdict, as all packets in an NBL belong to the same
                 // connection. So we can directly block all of them at once.
-                if (nbl_loop_i == 1 && nb_loop_i == 1 && NET_BUFFER_LIST_NEXT_NBL(nbl) == NULL) {
+                if (nblLoopI == 1 && nbLoopI == 1 && NET_BUFFER_LIST_NEXT_NBL(nbl) == NULL) {
                     DEBUG("blocking whole NBL");
                     classifyOut->actionType = FWP_ACTION_BLOCK;
                     return;
@@ -1406,7 +735,6 @@ void classifyMultiple(
     classifyOut->actionType = FWP_ACTION_BLOCK;
     classifyOut->flags |= FWPS_CLASSIFY_OUT_FLAG_ABSORB; // Set Absorb Flag
     classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;     // Clear Write Flag
-    return;
 }
 
 void classifyInboundIPv4(
@@ -1417,7 +745,11 @@ void classifyInboundIPv4(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
-    portmaster_packet_info inboundV4PacketInfo = {0};
+
+    UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(classifyContext);
+
 
     // Sanity check 1
     if (!classifyOut) {
@@ -1438,7 +770,8 @@ void classifyInboundIPv4(
         return;
     }
 
-    inboundV4PacketInfo.direction = 1;
+    PortmasterPacketInfo inboundV4PacketInfo = {0};
+    inboundV4PacketInfo.direction = DIRECTION_INBOUND;
     inboundV4PacketInfo.ipV6 = 0;
     inboundV4PacketInfo.localIP[0] = inFixedValues->incomingValue[FWPS_FIELD_INBOUND_IPPACKET_V4_IP_LOCAL_ADDRESS].value.uint32;
     inboundV4PacketInfo.remoteIP[0] = inFixedValues->incomingValue[FWPS_FIELD_INBOUND_IPPACKET_V4_IP_REMOTE_ADDRESS].value.uint32;
@@ -1452,8 +785,6 @@ void classifyInboundIPv4(
     }
 
     classifyMultiple(&inboundV4PacketInfo, verdictCacheV4, &verdictCacheV4Lock, inMetaValues, layerData, classifyOut);
-
-    return;
 }
 
 void classifyOutboundIPv4(
@@ -1464,7 +795,10 @@ void classifyOutboundIPv4(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
-    portmaster_packet_info outboundV4PacketInfo = {0};
+
+    UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(classifyContext);
 
     // Sanity check 1
     if (!classifyOut) {
@@ -1485,7 +819,8 @@ void classifyOutboundIPv4(
         return;
     }
 
-    outboundV4PacketInfo.direction = 0;
+    PortmasterPacketInfo outboundV4PacketInfo = {0};
+    outboundV4PacketInfo.direction = DIRECTION_OUTBOUND;
     outboundV4PacketInfo.ipV6 = 0;
     outboundV4PacketInfo.localIP[0] = inFixedValues->incomingValue[FWPS_FIELD_OUTBOUND_IPPACKET_V4_IP_LOCAL_ADDRESS].value.uint32;
     outboundV4PacketInfo.remoteIP[0] = inFixedValues->incomingValue[FWPS_FIELD_OUTBOUND_IPPACKET_V4_IP_REMOTE_ADDRESS].value.uint32;
@@ -1499,8 +834,6 @@ void classifyOutboundIPv4(
     }
 
     classifyMultiple(&outboundV4PacketInfo, verdictCacheV4, &verdictCacheV4Lock, inMetaValues, layerData, classifyOut);
-
-    return;
 }
 
 void classifyInboundIPv6(
@@ -1511,8 +844,10 @@ void classifyInboundIPv6(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
-    portmaster_packet_info inboundV6PacketInfo = {0};
-    NTSTATUS status;
+
+    UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(classifyContext);
 
     // Sanity check 1
     if (!classifyOut) {
@@ -1533,17 +868,18 @@ void classifyInboundIPv6(
         return;
     }
 
-    inboundV6PacketInfo.direction = 1;
+    PortmasterPacketInfo inboundV6PacketInfo = {0};
+    inboundV6PacketInfo.direction = DIRECTION_INBOUND;
     inboundV6PacketInfo.ipV6 = 1;
 
-    status= copyIPv6(inFixedValues, FWPS_FIELD_INBOUND_IPPACKET_V6_IP_LOCAL_ADDRESS, inboundV6PacketInfo.localIP);
+    NTSTATUS status = copyIPv6(inFixedValues, FWPS_FIELD_INBOUND_IPPACKET_V6_IP_LOCAL_ADDRESS, inboundV6PacketInfo.localIP);
     if (status != STATUS_SUCCESS) {
         ERR("Could not copy IPv6, status= 0x%x", status);
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
     }
 
-    status= copyIPv6(inFixedValues, FWPS_FIELD_INBOUND_IPPACKET_V6_IP_REMOTE_ADDRESS, inboundV6PacketInfo.remoteIP);
+    status = copyIPv6(inFixedValues, FWPS_FIELD_INBOUND_IPPACKET_V6_IP_REMOTE_ADDRESS, inboundV6PacketInfo.remoteIP);
     if (status != STATUS_SUCCESS) {
         ERR("Could not copy IPv6, status= 0x%x", status);
         classifyOut->actionType = FWP_ACTION_BLOCK;
@@ -1559,7 +895,6 @@ void classifyInboundIPv6(
         inboundV6PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
     classifyMultiple(&inboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
-    return;
 }
 
 void classifyOutboundIPv6(
@@ -1570,7 +905,12 @@ void classifyOutboundIPv6(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
-    portmaster_packet_info outboundV6PacketInfo = {0};
+
+    UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(classifyContext);
+
+    PortmasterPacketInfo outboundV6PacketInfo = {0};
     NTSTATUS status;
 
     // Sanity check 1
@@ -1592,7 +932,7 @@ void classifyOutboundIPv6(
         return;
     }
 
-    outboundV6PacketInfo.direction = 0;
+    outboundV6PacketInfo.direction = DIRECTION_OUTBOUND;
     outboundV6PacketInfo.ipV6 = 1;
 
     status= copyIPv6(inFixedValues, FWPS_FIELD_OUTBOUND_IPPACKET_V6_IP_LOCAL_ADDRESS, outboundV6PacketInfo.localIP);
@@ -1618,5 +958,4 @@ void classifyOutboundIPv6(
         outboundV6PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
     classifyMultiple(&outboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
-    return;
 }

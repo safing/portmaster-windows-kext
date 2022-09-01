@@ -19,10 +19,10 @@
 
 
 /*****************************************************************
- Static Variables to handle access to netbuffers
+ Global Variables to handle access to net buffers
  *****************************************************************/
-static NDIS_HANDLE nbl_pool_handle = NULL;      //Handle for NetBufferList
-static NDIS_HANDLE nb_pool_handle = NULL;       //Handle for one NetBuffer
+NDIS_HANDLE nblPoolHandle = NULL;      // Handle for NetBufferList
+NDIS_HANDLE nbPoolHandle = NULL;       // Handle for one NetBuffer
 
 
 /*****************************************************************
@@ -32,54 +32,52 @@ static NDIS_HANDLE nb_pool_handle = NULL;       //Handle for one NetBuffer
  * Initializes pool for  netbuffers
  * Called at DriverEntry
  */
-NTSTATUS init_netbufferpool() {
-    NET_BUFFER_LIST_POOL_PARAMETERS nbl_pool_params;
-    NET_BUFFER_POOL_PARAMETERS nb_pool_params;
-
+NTSTATUS initNetBufferPool() {
     // Create a NET_BUFFER_LIST pool handle.
-    RtlZeroMemory(&nbl_pool_params, sizeof(nbl_pool_params));
-    nbl_pool_params.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
-    nbl_pool_params.Header.Revision =
-        NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
-    nbl_pool_params.Header.Size = sizeof(nbl_pool_params);
-    nbl_pool_params.fAllocateNetBuffer = TRUE;
-    nbl_pool_params.PoolTag = PORTMASTER_TAG;
-    nbl_pool_params.DataSize = 0;
-    nbl_pool_handle = NdisAllocateNetBufferListPool(NULL, &nbl_pool_params);
-    if (nbl_pool_handle == NULL) {
+    NET_BUFFER_LIST_POOL_PARAMETERS nblPoolParams;
+    RtlZeroMemory(&nblPoolParams, sizeof(nblPoolParams));
+    nblPoolParams.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
+    nblPoolParams.Header.Revision = NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
+    nblPoolParams.Header.Size = sizeof(nblPoolParams);
+    nblPoolParams.fAllocateNetBuffer = true;
+    nblPoolParams.PoolTag = PORTMASTER_TAG;
+    nblPoolParams.DataSize = 0;
+    nblPoolHandle = NdisAllocateNetBufferListPool(NULL, &nblPoolParams);
+    if (nblPoolHandle == NULL) {
         ERR("failed to allocate net buffer list pool");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     // Create a NET_BUFFER pool handle.
-    RtlZeroMemory(&nb_pool_params, sizeof(nb_pool_params));
-    nb_pool_params.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
-    nb_pool_params.Header.Revision = NET_BUFFER_POOL_PARAMETERS_REVISION_1;
-    nb_pool_params.Header.Size =
-        NDIS_SIZEOF_NET_BUFFER_POOL_PARAMETERS_REVISION_1;
-    nb_pool_params.PoolTag = PORTMASTER_TAG;
-    nb_pool_params.DataSize = 0;
-    nb_pool_handle = NdisAllocateNetBufferPool(NULL, &nb_pool_params);
-    if (nb_pool_handle == NULL) {
+    NET_BUFFER_POOL_PARAMETERS nbPoolParams;
+    RtlZeroMemory(&nbPoolParams, sizeof(nbPoolParams));
+    nbPoolParams.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
+    nbPoolParams.Header.Revision = NET_BUFFER_POOL_PARAMETERS_REVISION_1;
+    nbPoolParams.Header.Size = NDIS_SIZEOF_NET_BUFFER_POOL_PARAMETERS_REVISION_1;
+    nbPoolParams.PoolTag = PORTMASTER_TAG;
+    nbPoolParams.DataSize = 0;
+    nbPoolHandle = NdisAllocateNetBufferPool(NULL, &nbPoolParams);
+    if (nbPoolHandle == NULL) {
         ERR("failed to allocate net buffer pool");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-    INFO("init_netbufferpool OK");
+
+    INFO("initNetBufferPool OK");
     return STATUS_SUCCESS;
 }
 
 /*
- * Frees the netbufferpool
+ * Frees the NetBufferPool
  * Called at DriverUnload
  */
-void free_netbufferpool() {
-    if (nbl_pool_handle != NULL) {
-        NdisFreeNetBufferListPool(nbl_pool_handle);
+void freeNetBufferPool() {
+    if (nblPoolHandle != NULL) {
+        NdisFreeNetBufferListPool(nblPoolHandle);
     }
-    if (nb_pool_handle != NULL) {
-        NdisFreeNetBufferPool(nb_pool_handle);
+    if (nbPoolHandle != NULL) {
+        NdisFreeNetBufferPool(nbPoolHandle);
     }
-    INFO("free_netbufferpool OK");
+    INFO("freeNetBufferPool OK");
 }
 
 /*****************************************************************
@@ -88,32 +86,30 @@ void free_netbufferpool() {
 /*
  * Wraps packet data into netbuffer
  * Required for Sending / Injecting packets
- * packet_data: pointer to packet (Endianness must be set correctly at this level)
- * packet_len: Length of packet in bytes
+ * packetData: pointer to packet (Endianness must be set correctly at this level)
+ * packetLength: Length of packet in bytes
  * Returns
  *    PNET_BUFFER_LIST*: packet to be sent
  *    NTSTATUS
  * Called by redir and respondWithVerdict
  */
-NTSTATUS wrap_packet_data_in_nb(void* packet_data, int packet_len, PNET_BUFFER_LIST* nbl) {
-    PMDL mdl;
-    PNET_BUFFER_LIST buffers;
-    NTSTATUS status;
-
+NTSTATUS wrapPacketDataInNB(void* packetData, size_t packetLength, PNET_BUFFER_LIST* nbl) {
     // sanity check
-    if (!packet_data || packet_len == 0 || !nbl) {
+    if (!packetData || packetLength == 0 || !nbl) {
         ERR("Invalid parameters");
         return STATUS_INVALID_PARAMETER;
     }
 
-    mdl = IoAllocateMdl(packet_data, packet_len, FALSE, FALSE, NULL);
+    PMDL mdl = IoAllocateMdl(packetData, (ULONG)packetLength, false, false, NULL);
     if (mdl == NULL) {
         ERR("failed to allocate MDL for reinjected packet");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     MmBuildMdlForNonPagedPool(mdl);
-    status = FwpsAllocateNetBufferAndNetBufferList0(nbl_pool_handle, 0, 0, mdl, 0, packet_len, &buffers);
+
+    PNET_BUFFER_LIST buffers = NULL;
+    NTSTATUS status = FwpsAllocateNetBufferAndNetBufferList0(nblPoolHandle, 0, 0, mdl, 0, packetLength, &buffers);
     if (!NT_SUCCESS(status)) {
         ERR("failed to create NET_BUFFER_LIST for reinjected packet");
         IoFreeMdl(mdl);
@@ -125,20 +121,18 @@ NTSTATUS wrap_packet_data_in_nb(void* packet_data, int packet_len, PNET_BUFFER_L
 }
 
 /*
- * "Borrows" data from netbuffer without actually coping it
+ * "Borrows" data from net buffer without actually coping it
  * This is faster, but does not always succeed.
  * Called by classifyAll.
  */
-NTSTATUS borrow_packet_data_from_nb(PNET_BUFFER nb, ULONG bytesNeeded, void** data) {
-    PVOID ptr;
-
+NTSTATUS borrowPacketDataFromNB(PNET_BUFFER nb, size_t bytesNeeded, void **data) {
     // sanity check
     if (!nb || !data) {
         ERR("Invalid parameters");
         return STATUS_INVALID_PARAMETER;
     }
 
-    ptr = NdisGetDataBuffer(nb, bytesNeeded, NULL, 1, 0);
+    void *ptr = NdisGetDataBuffer(nb, (ULONG)bytesNeeded, NULL, 1, 0);
     if (ptr != NULL) {
         *data = ptr;
         return STATUS_SUCCESS;
@@ -148,42 +142,41 @@ NTSTATUS borrow_packet_data_from_nb(PNET_BUFFER nb, ULONG bytesNeeded, void** da
 }
 
 /*
- * copies packet data from netbuffer "nb" to "data" up to the size "maxBytes"
- * acutal bytes copied is stored in "data_len"
+ * copies packet data from net buffer "nb" to "data" up to the size "maxBytes"
+ * actual bytes copied is stored in "dataLength"
  * returns NTSTATUS
  * Called by classifyAll and redir_from_callout if "borrow_packet_data_from_nb" fails
  *
  * NET_BUFFER_LIST can hold multiple NET_BUFFER in rare edge cases. Ignoring these is ok for now.
  * TODO: handle these cases.
  */
-NTSTATUS copy_packet_data_from_nb(PNET_BUFFER nb, ULONG maxBytes, void** data, ULONG* data_len) {
-    PVOID ptr;
-    *data_len = NET_BUFFER_DATA_LENGTH(nb);
+NTSTATUS copyPacketDataFromNB(PNET_BUFFER nb, size_t maxBytes, void **data, size_t *dataLength) {
+    *dataLength = NET_BUFFER_DATA_LENGTH(nb);
 
     // sanity check
-    if (!nb || !data || !data_len) {
+    if (!nb || !data || !dataLength) {
         ERR("Invalid parameters");
         return STATUS_INVALID_PARAMETER;
     }
 
-    if (maxBytes == 0 || maxBytes > *data_len) {
-        maxBytes = *data_len;
+    if (maxBytes == 0 || maxBytes > *dataLength) {
+        maxBytes = *dataLength;
     } else {
-        *data_len = maxBytes;
+        *dataLength = maxBytes;
     }
 
-    *data = portmaster_malloc(maxBytes, FALSE);
+    *data = portmasterMalloc(maxBytes, false);
     if (*data == NULL) {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
     //Copy data from NET_BUFFER
-    ptr = NdisGetDataBuffer(nb, maxBytes, NULL, 1, 0);
+    void *ptr = NdisGetDataBuffer(nb, (ULONG)maxBytes, NULL, 1, 0);
     if (ptr != NULL) {
         // Contiguous (common) case:
         RtlCopyMemory(*data, ptr, maxBytes);
     } else {
         // Non-contigious case:
-        ptr = NdisGetDataBuffer(nb, maxBytes, *data, 1, 0);
+        ptr = NdisGetDataBuffer(nb, (ULONG)maxBytes, *data, 1, 0);
         if (ptr == NULL) {
             return STATUS_INTERNAL_ERROR;
         }

@@ -24,21 +24,12 @@
     <ClCompile Include="src\pm_kernel_glue.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\include\packet_cache.h" />
-    <ClInclude Include="..\include\pm_api.h" />
-    <ClInclude Include="..\include\pm_callouts.h" />
-    <ClInclude Include="..\include\pm_checksum.h" />
     <ClInclude Include="..\include\pm_common.h" />
     <ClInclude Include="..\include\pm_debug.h" />
     <ClInclude Include="..\include\pm_debug_dll.h" />
-    <ClInclude Include="..\include\pm_kernel.h" />
-    <ClInclude Include="..\include\pm_kernel_glue.h" />
-    <ClInclude Include="..\include\pm_linux_fix.h" />
-    <ClInclude Include="..\include\pm_netbuffer.h" />
-    <ClInclude Include="..\include\pm_register.h" />
-    <ClInclude Include="..\include\pm_utils.h" />
-    <ClInclude Include="..\include\verdict_cache.h" />
     <ClInclude Include="..\include\version.h" />
+    <ClInclude Include="include\pm_api.h" />
+    <ClInclude Include="include\pm_kernel_glue.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
@@ -150,11 +141,11 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;GLUEDLL_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS;PM_VERSION_MAJOR=$(PM_VERSION_MAJOR);PM_VERSION_MINOR=$(PM_VERSION_MINOR);PM_VERSION_REVISION=$(PM_VERSION_REVISION);PM_VERSION_BUILD=$(PM_VERSION_BUILD)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>GLUEDLL_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS;PM_VERSION_MAJOR=$(PM_VERSION_MAJOR);PM_VERSION_MINOR=$(PM_VERSION_MINOR);PM_VERSION_REVISION=$(PM_VERSION_REVISION);PM_VERSION_BUILD=$(PM_VERSION_BUILD)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(SolutionDir)\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)\include;$(ProjectDir)\include</AdditionalIncludeDirectories>
       <LanguageStandard_C>stdc11</LanguageStandard_C>
     </ClCompile>
     <Link>
@@ -173,7 +164,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(SolutionDir)\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)\include;$(ProjectDir)\include</AdditionalIncludeDirectories>
       <LanguageStandard_C>stdc11</LanguageStandard_C>
     </ClCompile>
     <Link>

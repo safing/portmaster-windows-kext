@@ -50,11 +50,11 @@ extern int logLevel;  //must be defined in dll and kernel object
     #define ERR(...)  _DEBUG(3, ##__VA_ARGS__)        //ERROR is already defined in wingdi.h
 
     #define _DEBUG(level, format, ...) __DEBUG(LOGGER_NAME, level, __LINE__, format, ##__VA_ARGS__)
-    extern void __DEBUG(char* name, int level, int line, char* format, ...);
-    extern void print_ip_header(char* buf, unsigned long buf_len, char* data, unsigned long data_len);
-    extern char* print_ipv4_packet(void* packet);
-    extern char* print_packet_info(pportmaster_packet_info packetInfo);
-    extern void initDebugStructure();
+    void __DEBUG(char *name, int level, int line, char *format, ...);
+    void printIpHeader(char *buf, unsigned long buf_len, char *data, unsigned long dataLength);
+    char* printIpv4Packet(void *packet);
+    char* printPacketInfo(PortmasterPacketInfo *packetInfo);
+    void initDebugStructure();
 
 #else
     #define DEBUG(...)  {}
@@ -62,9 +62,9 @@ extern int logLevel;  //must be defined in dll and kernel object
     #define WARN(...)   {}
     #define ERR(...)    {}
 
-    #define print_ip_header   {}
-    #define print_ipv4_packet {}
-    #define print_packet_info {}
+    #define printIpHeader   {}
+    #define printIpv4Packet {}
+    #define printPacketInfo {}
     #define initDebugStructure() {}
 #endif
 

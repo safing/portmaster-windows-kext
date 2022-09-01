@@ -14,7 +14,6 @@
 #define LOGGER_NAME "pm_register"
 #include "pm_debug.h"
 
-extern HANDLE filter_engine_handle;
 
 // Sublayer name and ID
 #define PORTMASTER_SUBLAYER_NAME        L"PortmasterSublayer"
@@ -30,12 +29,6 @@ DEFINE_GUID(PORTMASTER_SUBLAYER_GUID, 0xa87fb472, 0xfc68, 0x4805, 0x85, 0x59, 0x
 #define INBOUND_V6_FILTER_DESCRIPTION  L"This filter is used by the Portmaster to intercept inbound IPv6 traffic."
 #define OUTBOUND_V6_FILTER_NAME        L"PortmasterOutboundV6Filter"
 #define OUTBOUND_V6_FILTER_DESCRIPTION L"This filter is used by the Portmaster to intercept outbound IPv6 traffic."
-
-// Assigned filter IDs by engine
-UINT64 inbound_v4_filter_id;
-UINT64 outbound_v4_filter_id;
-UINT64 inbound_v6_filter_id;
-UINT64 outbound_v6_filter_id;
 
 // Callout Names
 #define INBOUND_V4_CALLOUT_NAME         L"PortmasterInboundV4Callout"
@@ -53,30 +46,39 @@ DEFINE_GUID(OUTBOUND_V4_CALLOUT_GUID, 0x41162b9e, 0x8473, 0x4b88, 0xa5, 0xeb, 0x
 DEFINE_GUID(INBOUND_V6_CALLOUT_GUID,  0xceff1df7, 0x2baa, 0x44c5, 0xa6, 0xe5, 0x73, 0xa9, 0x58, 0x49, 0xbc, 0xff); // ceff1df7-2baa-44c5-a6e5-73a95849bcff
 DEFINE_GUID(OUTBOUND_V6_CALLOUT_GUID, 0x32bad112, 0x6af4, 0x4109, 0x80, 0x9b, 0xc0, 0x75, 0x70, 0xba, 0x01, 0xb4); // 32bad112-6af4-4109-809b-c07570ba01b4
 
+extern HANDLE filterEngineHandle;
+
+// Assigned filter IDs by engine
+UINT64 inboundV4FilterID;
+UINT64 outboundV4FilterID;
+UINT64 inboundV6FilterID;
+UINT64 outboundV6FilterID;
+
+
 // Assigned callout IDs by engine
-UINT32 inbound_v4_callout_id;
-UINT32 outbound_v4_callout_id;
-UINT32 inbound_v6_callout_id;
-UINT32 outbound_v6_callout_id;
+UINT32 inboundV4CalloutID;
+UINT32 outboundV4CalloutID;
+UINT32 inboundV6CalloutID;
+UINT32 outboundV6CalloutID;
 
 // Registered?
-BOOLEAN inbound_v4_callout_registered = FALSE;
-BOOLEAN outbound_v4_callout_registered = FALSE;
-BOOLEAN inbound_v6_callout_registered = FALSE;
-BOOLEAN outbound_v6_callout_registered = FALSE;
+bool inboundV4CalloutRegistered = false;
+bool outboundV4CalloutRegistered = false;
+bool inboundV6CalloutRegistered = false;
+bool outboundV6CalloutRegistered = false;
 
 /** PORTMASTER SUBLAYER **/
 
-NTSTATUS register_sublayer() {
-    NTSTATUS status = STATUS_SUCCESS;
-    FWPM_SUBLAYER sublayer = { 0 };
+NTSTATUS registerSublayer() {
 
+    FWPM_SUBLAYER sublayer = { 0 };
     sublayer.subLayerKey = PORTMASTER_SUBLAYER_GUID;
     sublayer.displayData.name = PORTMASTER_SUBLAYER_NAME;
     sublayer.displayData.description = PORTMASTER_SUBLAYER_DESCRIPTION;
     sublayer.flags = 0;
     sublayer.weight = 0xFFFF;
-    status = FwpmSubLayerAdd(filter_engine_handle, &sublayer, NULL);
+
+    NTSTATUS status = FwpmSubLayerAdd(filterEngineHandle, &sublayer, NULL);
     if (!NT_SUCCESS(status)) {
         INFO("Could not register Portmaster sublayer: rc=0x%08x", status);
     } else {
@@ -87,18 +89,16 @@ NTSTATUS register_sublayer() {
 
 /** PORTMASTER FILTERS **/
 
-NTSTATUS register_filter(
+NTSTATUS registerFilter(
     FWPM_FILTER* filter,
-    UINT64* filter_id,
-    wchar_t* filter_name,
-    wchar_t* filter_description,
-    const GUID callout_guid,
+    UINT64* filterID,
+    wchar_t* filterName,
+    wchar_t* filterDescription,
+    const GUID calloutGUID,
     const GUID layer
 ) {
-    NTSTATUS status = STATUS_SUCCESS;
-
-    filter->displayData.name = filter_name;
-    filter->displayData.description = filter_description;
+    filter->displayData.name = filterName;
+    filter->displayData.description = filterDescription;
     filter->action.type = FWP_ACTION_CALLOUT_TERMINATING;   // Says this filter's callout MUST make a block/permit decision. Also see doc excerpts below.
     filter->subLayerKey = PORTMASTER_SUBLAYER_GUID;
     filter->weight.type = FWP_UINT8;
@@ -106,10 +106,10 @@ NTSTATUS register_filter(
     filter->flags = FWPM_FILTER_FLAG_CLEAR_ACTION_RIGHT;
     filter->numFilterConditions = 0;    // If you specify 0, this filter invokes its callout for all traffic in its layer
     filter->layerKey = layer;   // This layer must match the layer that ExampleCallout is registered to
-    filter->action.calloutKey = callout_guid;
-    status = FwpmFilterAdd(filter_engine_handle, filter, NULL, filter_id);
+    filter->action.calloutKey = calloutGUID;
+    NTSTATUS status = FwpmFilterAdd(filterEngineHandle, filter, NULL, filterID);
     if (!NT_SUCCESS(status)) {
-        ERR("Could not register Portmaster filter '%ls' functions: rc=0x%08x", filter_name, status);
+        ERR("Could not register Portmaster filter '%ls' functions: rc=0x%08x", filterName, status);
     } else {
         INFO("Portmaster filter registered");
     }
@@ -124,38 +124,42 @@ NTSTATUS register_filter(
     return status;
 }
 
-NTSTATUS register_inbound_v4_filter(DEVICE_OBJECT* wdm_device) {
+NTSTATUS registerInboundV4Filter(DEVICE_OBJECT* wdmDevice) {
+    UNREFERENCED_PARAMETER(wdmDevice);
     FWPM_FILTER filter = { 0 };
-    return register_filter(&filter, &inbound_v4_filter_id, INBOUND_V4_FILTER_NAME, INBOUND_V4_FILTER_DESCRIPTION, INBOUND_V4_CALLOUT_GUID, FWPM_LAYER_INBOUND_IPPACKET_V4);
+    return registerFilter(&filter, &inboundV4FilterID, INBOUND_V4_FILTER_NAME, INBOUND_V4_FILTER_DESCRIPTION, INBOUND_V4_CALLOUT_GUID, FWPM_LAYER_INBOUND_IPPACKET_V4);
 }
 
-NTSTATUS register_outbound_v4_filter(DEVICE_OBJECT* wdm_device) {
+NTSTATUS registerOutboundV4Filter(DEVICE_OBJECT* wdmDevice) {
+    UNREFERENCED_PARAMETER(wdmDevice);
     FWPM_FILTER filter = { 0 };
-    return register_filter(&filter, &outbound_v4_filter_id, OUTBOUND_V4_FILTER_NAME, OUTBOUND_V4_FILTER_DESCRIPTION, OUTBOUND_V4_CALLOUT_GUID, FWPM_LAYER_OUTBOUND_IPPACKET_V4);
+    return registerFilter(&filter, &outboundV4FilterID, OUTBOUND_V4_FILTER_NAME, OUTBOUND_V4_FILTER_DESCRIPTION, OUTBOUND_V4_CALLOUT_GUID, FWPM_LAYER_OUTBOUND_IPPACKET_V4);
 }
 
-NTSTATUS register_inbound_v6_filter(DEVICE_OBJECT* wdm_device) {
+NTSTATUS registerInboundV6Filter(DEVICE_OBJECT* wdmDevice) {
+    UNREFERENCED_PARAMETER(wdmDevice);
     FWPM_FILTER filter = { 0 };
-    return register_filter(&filter, &inbound_v6_filter_id, INBOUND_V6_FILTER_NAME, INBOUND_V6_FILTER_DESCRIPTION, INBOUND_V6_CALLOUT_GUID, FWPM_LAYER_INBOUND_IPPACKET_V6);
+    return registerFilter(&filter, &inboundV6FilterID, INBOUND_V6_FILTER_NAME, INBOUND_V6_FILTER_DESCRIPTION, INBOUND_V6_CALLOUT_GUID, FWPM_LAYER_INBOUND_IPPACKET_V6);
 }
 
-NTSTATUS register_outbound_v6_filter(DEVICE_OBJECT* wdm_device) {
+NTSTATUS registerOutboundV6Filter(DEVICE_OBJECT* wdmDevice) {
+    UNREFERENCED_PARAMETER(wdmDevice);
     FWPM_FILTER filter = { 0 };
-    return register_filter(&filter, &outbound_v6_filter_id, OUTBOUND_V6_FILTER_NAME, OUTBOUND_V6_FILTER_DESCRIPTION, OUTBOUND_V6_CALLOUT_GUID, FWPM_LAYER_OUTBOUND_IPPACKET_V6);
+    return registerFilter(&filter, &outboundV6FilterID, OUTBOUND_V6_FILTER_NAME, OUTBOUND_V6_FILTER_DESCRIPTION, OUTBOUND_V6_CALLOUT_GUID, FWPM_LAYER_OUTBOUND_IPPACKET_V6);
 }
 
 /** PORTMASTER CALLOUTS **/
 
-NTSTATUS register_callout(
-    DEVICE_OBJECT* wdm_device,
-    FWPS_CALLOUT* s_callout,
-    FWPM_CALLOUT* m_callout,
-    FWPM_DISPLAY_DATA* display_data,
-    UINT32* callout_id,
-    BOOLEAN* registered,
-    wchar_t* callout_name,
-    wchar_t* callout_description,
-    const GUID callout_guid,
+NTSTATUS registerCallout(
+    DEVICE_OBJECT* wdmDevice,
+    FWPS_CALLOUT* sCallout,
+    FWPM_CALLOUT* mCallout,
+    FWPM_DISPLAY_DATA* displayData,
+    UINT32* calloutID,
+    BOOL* registered,
+    wchar_t* calloutName,
+    wchar_t* calloutDescription,
+    const GUID calloutGUID,
     void (*callout_fn)(
         const FWPS_INCOMING_VALUES* inFixedValues,
         const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
@@ -166,51 +170,49 @@ NTSTATUS register_callout(
         FWPS_CLASSIFY_OUT* classifyOut),
     const GUID layer
 ) {
-    NTSTATUS status = STATUS_SUCCESS;
-
-    if (filter_engine_handle == NULL) {
+    if (filterEngineHandle == NULL) {
         return STATUS_INVALID_HANDLE;
     }
 
-    display_data->name = callout_name;
-    display_data->description = callout_description;
+    displayData->name = calloutName;
+    displayData->description = calloutDescription;
 
     // Register callout
-    s_callout->calloutKey = callout_guid;
-    s_callout->classifyFn = *callout_fn;
-    s_callout->notifyFn = genericNotify;
-    s_callout->flowDeleteFn = genericFlowDelete;
-    status = FwpsCalloutRegister((void *)wdm_device, s_callout, callout_id);
+    sCallout->calloutKey = calloutGUID;
+    sCallout->classifyFn = *callout_fn;
+    sCallout->notifyFn = genericNotify;
+    sCallout->flowDeleteFn = genericFlowDelete;
+    NTSTATUS status = FwpsCalloutRegister((void *)wdmDevice, sCallout, calloutID);
     if (!NT_SUCCESS(status)) {
         ERR("Could not register PortmasterInboundV4Callout functions: rc=0x%08x", status);
         return status;
     }
 
     // Register callout manager
-    m_callout->calloutKey = callout_guid;
-    m_callout->displayData = *display_data;
-    m_callout->applicableLayer = layer;
-    m_callout->flags = 0;
-    status = FwpmCalloutAdd(filter_engine_handle, m_callout, NULL, NULL);
+    mCallout->calloutKey = calloutGUID;
+    mCallout->displayData = *displayData;
+    mCallout->applicableLayer = layer;
+    mCallout->flags = 0;
+    status = FwpmCalloutAdd(filterEngineHandle, mCallout, NULL, NULL);
     if (!NT_SUCCESS(status)) {
         ERR("Could not register Portmaster callout functions: rc=0x%08x", status);
     } else {
-        *registered = TRUE;
+        *registered = true;
         // INFO("Portmaster callout registered");
     }
     return status;
 }
 
-NTSTATUS register_inbound_v4_callout(DEVICE_OBJECT* wdm_device) {
-    FWPS_CALLOUT s_callout = { 0 };
-    FWPM_CALLOUT m_callout = { 0 };
-    FWPM_DISPLAY_DATA display_data = { 0 };
-    return register_callout(wdm_device,
-            &s_callout,
-            &m_callout,
-            &display_data,
-            &inbound_v4_callout_id,
-            &inbound_v4_callout_registered,
+NTSTATUS registerInboundV4Callout(DEVICE_OBJECT* wdmDevice) {
+    FWPS_CALLOUT sCallout = { 0 };
+    FWPM_CALLOUT mCallout = { 0 };
+    FWPM_DISPLAY_DATA displayData = { 0 };
+    return registerCallout(wdmDevice,
+            &sCallout,
+            &mCallout,
+            &displayData,
+            &inboundV4CalloutID,
+            (BOOL*) &inboundV4CalloutRegistered,
             INBOUND_V4_CALLOUT_NAME,
             INBOUND_V4_CALLOUT_DESCRIPTION,
             INBOUND_V4_CALLOUT_GUID,
@@ -219,16 +221,16 @@ NTSTATUS register_inbound_v4_callout(DEVICE_OBJECT* wdm_device) {
         );
 }
 
-NTSTATUS register_outbound_v4_callout(DEVICE_OBJECT* wdm_device) {
-    FWPS_CALLOUT s_callout = { 0 };
-    FWPM_CALLOUT m_callout = { 0 };
-    FWPM_DISPLAY_DATA display_data = { 0 };
-    return register_callout(wdm_device,
-            &s_callout,
-            &m_callout,
-            &display_data,
-            &outbound_v4_callout_id,
-            &outbound_v4_callout_registered,
+NTSTATUS registerOutboundV4Callout(DEVICE_OBJECT* wdmDevice) {
+    FWPS_CALLOUT sCallout = { 0 };
+    FWPM_CALLOUT mCallout = { 0 };
+    FWPM_DISPLAY_DATA displayData = { 0 };
+    return registerCallout(wdmDevice,
+            &sCallout,
+            &mCallout,
+            &displayData,
+            &outboundV4CalloutID,
+            (BOOL*) &outboundV4CalloutRegistered,
             OUTBOUND_V4_CALLOUT_NAME,
             OUTBOUND_V4_CALLOUT_DESCRIPTION,
             OUTBOUND_V4_CALLOUT_GUID,
@@ -237,16 +239,16 @@ NTSTATUS register_outbound_v4_callout(DEVICE_OBJECT* wdm_device) {
         );
 }
 
-NTSTATUS register_inbound_v6_callout(DEVICE_OBJECT* wdm_device) {
-    FWPS_CALLOUT s_callout = { 0 };
-    FWPM_CALLOUT m_callout = { 0 };
-    FWPM_DISPLAY_DATA display_data = { 0 };
-    return register_callout(wdm_device,
-            &s_callout,
-            &m_callout,
-            &display_data,
-            &inbound_v6_callout_id,
-            &inbound_v6_callout_registered,
+NTSTATUS registerInboundV6Callout(DEVICE_OBJECT* wdmDevice) {
+    FWPS_CALLOUT sCallout = { 0 };
+    FWPM_CALLOUT mCallout = { 0 };
+    FWPM_DISPLAY_DATA displayData = { 0 };
+    return registerCallout(wdmDevice,
+            &sCallout,
+            &mCallout,
+            &displayData,
+            &inboundV6CalloutID,
+            (BOOL*) &inboundV6CalloutRegistered,
             INBOUND_V6_CALLOUT_NAME,
             INBOUND_V6_CALLOUT_DESCRIPTION,
             INBOUND_V6_CALLOUT_GUID,
@@ -255,16 +257,16 @@ NTSTATUS register_inbound_v6_callout(DEVICE_OBJECT* wdm_device) {
         );
 }
 
-NTSTATUS register_outbound_v6_callout(DEVICE_OBJECT* wdm_device) {
-    FWPS_CALLOUT s_callout = { 0 };
-    FWPM_CALLOUT m_callout = { 0 };
-    FWPM_DISPLAY_DATA display_data = { 0 };
-    return register_callout(wdm_device,
-            &s_callout,
-            &m_callout,
-            &display_data,
-            &outbound_v6_callout_id,
-            &outbound_v6_callout_registered,
+NTSTATUS registerOutboundV6Callout(DEVICE_OBJECT* wdmDevice) {
+    FWPS_CALLOUT sCallout = { 0 };
+    FWPM_CALLOUT mCallout = { 0 };
+    FWPM_DISPLAY_DATA displayData = { 0 };
+    return registerCallout(wdmDevice,
+            &sCallout,
+            &mCallout,
+            &displayData,
+            &outboundV6CalloutID,
+            (BOOL*) &outboundV6CalloutRegistered,
             OUTBOUND_V6_CALLOUT_NAME,
             OUTBOUND_V6_CALLOUT_DESCRIPTION,
             OUTBOUND_V6_CALLOUT_GUID,
@@ -275,56 +277,56 @@ NTSTATUS register_outbound_v6_callout(DEVICE_OBJECT* wdm_device) {
 
 /** EXPORTED **/
 
-NTSTATUS register_wfp_stack(DEVICE_OBJECT* wdm_device) {
+NTSTATUS registerWFPStack(DEVICE_OBJECT* wdmDevice) {
     NTSTATUS status = STATUS_SUCCESS;
 
     // register sublayer
 
-    status = register_sublayer();
+    status = registerSublayer();
     if (!NT_SUCCESS(status)) {
         return status;
     }
 
     // register callouts
 
-    status = register_inbound_v4_callout(wdm_device);
+    status = registerInboundV4Callout(wdmDevice);
     if (!NT_SUCCESS(status)) {
         return status;
     }
 
-    status = register_outbound_v4_callout(wdm_device);
+    status = registerOutboundV4Callout(wdmDevice);
     if (!NT_SUCCESS(status)) {
         return status;
     }
 
-    status = register_inbound_v6_callout(wdm_device);
+    status = registerInboundV6Callout(wdmDevice);
     if (!NT_SUCCESS(status)) {
         return status;
     }
 
-    status = register_outbound_v6_callout(wdm_device);
+    status = registerOutboundV6Callout(wdmDevice);
     if (!NT_SUCCESS(status)) {
         return status;
     }
 
     // register filters
 
-    status = register_inbound_v4_filter(wdm_device);
+    status = registerInboundV4Filter(wdmDevice);
     if (!NT_SUCCESS(status)) {
         return status;
     }
 
-    status = register_outbound_v4_filter(wdm_device);
+    status = registerOutboundV4Filter(wdmDevice);
     if (!NT_SUCCESS(status)) {
         return status;
     }
 
-    status = register_inbound_v6_filter(wdm_device);
+    status = registerInboundV6Filter(wdmDevice);
     if (!NT_SUCCESS(status)) {
         return status;
     }
 
-    status = register_outbound_v6_filter(wdm_device);
+    status = registerOutboundV6Filter(wdmDevice);
     if (!NT_SUCCESS(status)) {
         return status;
     }
@@ -332,30 +334,30 @@ NTSTATUS register_wfp_stack(DEVICE_OBJECT* wdm_device) {
     return status;
 }
 
-NTSTATUS unregister_filters() {
+NTSTATUS unregisterFilters() {
     NTSTATUS status = STATUS_SUCCESS;
 
     // unregister filters
 
-    status = FwpmFilterDeleteById(filter_engine_handle, inbound_v4_filter_id);
+    status = FwpmFilterDeleteById(filterEngineHandle, inboundV4FilterID);
     if (!NT_SUCCESS(status)) {
         ERR("Could not unregister PortmasterInboundV4Filter: rc=0x%08x", status);
         return status;
     }
 
-    status = FwpmFilterDeleteById(filter_engine_handle, outbound_v4_filter_id);
+    status = FwpmFilterDeleteById(filterEngineHandle, outboundV4FilterID);
     if (!NT_SUCCESS(status)) {
         ERR("Could not unregister PortmasterOutboundV4Filter: rc=0x%08x", status);
         return status;
     }
 
-    status = FwpmFilterDeleteById(filter_engine_handle, inbound_v6_filter_id);
+    status = FwpmFilterDeleteById(filterEngineHandle, inboundV6FilterID);
     if (!NT_SUCCESS(status)) {
         ERR("Could not unregister PortmasterInboundV6Filter: rc=0x%08x", status);
         return status;
     }
 
-    status = FwpmFilterDeleteById(filter_engine_handle, outbound_v6_filter_id);
+    status = FwpmFilterDeleteById(filterEngineHandle, outboundV6FilterID);
     if (!NT_SUCCESS(status)) {
         ERR("Could not unregister PortmasterOutboundV6Filter: rc=0x%08x", status);
         return status;
@@ -364,37 +366,37 @@ NTSTATUS unregister_filters() {
     return status;
 }
 
-NTSTATUS unregister_callouts() {
+NTSTATUS unregisterCallouts() {
     NTSTATUS status = STATUS_SUCCESS;
 
     // unregister callouts
 
-    if (inbound_v4_callout_registered == TRUE) {
-        status = FwpsCalloutUnregisterById(inbound_v4_callout_id);
+    if (inboundV4CalloutRegistered == true) {
+        status = FwpsCalloutUnregisterById(inboundV4CalloutID);
         if (!NT_SUCCESS(status)) {
             ERR("Could not unregister PortmasterInboundV4Callout: rc=0x%08x", status);
             return status;
         }
     }
 
-    if (outbound_v4_callout_registered == TRUE) {
-        status = FwpsCalloutUnregisterById(outbound_v4_callout_id);
+    if (outboundV4CalloutRegistered == true) {
+        status = FwpsCalloutUnregisterById(outboundV4CalloutID);
         if (!NT_SUCCESS(status)) {
             ERR("Could not unregister PortmasterOutboundV4Callout: rc=0x%08x", status);
             return status;
         }
     }
 
-    if (inbound_v6_callout_registered == TRUE) {
-        status = FwpsCalloutUnregisterById(inbound_v6_callout_id);
+    if (inboundV6CalloutRegistered == true) {
+        status = FwpsCalloutUnregisterById(inboundV6CalloutID);
         if (!NT_SUCCESS(status)) {
             ERR("Could not unregister PortmasterInboundV6Callout: rc=0x%08x", status);
             return status;
         }
     }
 
-    if (outbound_v6_callout_registered == TRUE) {
-        status = FwpsCalloutUnregisterById(outbound_v6_callout_id);
+    if (outboundV6CalloutRegistered == true) {
+        status = FwpsCalloutUnregisterById(outboundV6CalloutID);
         if (!NT_SUCCESS(status)) {
             ERR("Could not unregister PortmasterOutboundV6Callout: rc=0x%08x", status);
             return status;
