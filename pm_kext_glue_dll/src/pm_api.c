@@ -178,7 +178,8 @@ extern _EXPORT UINT32 PortmasterClearCache() {
     return rc;
 }
 
-#ifdef DEBUGON
+
+#ifdef DEBUG_ON
 
 /*
 * Blocks the application till unknown packet is received.
@@ -201,7 +202,7 @@ extern _EXPORT UINT32 PortmasterRecvVerdictRequestHello(PortmasterPacketInfo *pa
 #else
 #pragma message("Debugging functions will be disabled because of release version!")
 
-#endif
+#endif // DEBUG_ON
 
 
 
