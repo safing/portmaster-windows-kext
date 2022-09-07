@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 #include "pm_common.h"
 
@@ -32,7 +33,7 @@
 /* Portmaster Helpers                                                       */
 /****************************************************************************/
 #ifdef DEBUG_ON
-void debugPrint(char* name, int level, int line, char* format, ...) {
+void __DEBUG(char* name, int level, int line, char* format, ...) {
     if (level >= logLevel) {
         va_list args;
         static char buf[DEBUG_BUFSIZE+1];

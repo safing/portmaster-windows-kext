@@ -44,12 +44,12 @@ extern int logLevel;  //must be defined in dll and kernel object
  All we can do is write to a dedicated debug channel and adjust the loglevel at runtime.
 */
 #ifdef DEBUG_ON
-    #define DEBUG(...)  _DEBUG(0, ##__VA_ARGS__)
-    #define INFO(...)   _DEBUG(1, ##__VA_ARGS__)
-    #define WARN(...)   _DEBUG(2, ##__VA_ARGS__)
-    #define ERR(...)  _DEBUG(3, ##__VA_ARGS__)        //ERROR is already defined in wingdi.h
+    #define DEBUG(...)  DEBUG_LOG(0, ##__VA_ARGS__)
+    #define INFO(...)   DEBUG_LOG(1, ##__VA_ARGS__)
+    #define WARN(...)   DEBUG_LOG(2, ##__VA_ARGS__)
+    #define ERR(...)    DEBUG_LOG(3, ##__VA_ARGS__)        //ERROR is already defined in wingdi.h
 
-    #define _DEBUG(level, format, ...) __DEBUG(LOGGER_NAME, level, __LINE__, format, ##__VA_ARGS__)
+    #define DEBUG_LOG(level, format, ...) __DEBUG(LOGGER_NAME, level, __LINE__, format, ##__VA_ARGS__)
     void __DEBUG(char *name, int level, int line, char *format, ...);
     void printIpHeader(char *buf, unsigned long buf_len, char *data, unsigned long dataLength);
     char* printIpv4Packet(void *packet);

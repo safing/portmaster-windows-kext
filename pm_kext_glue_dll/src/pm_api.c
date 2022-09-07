@@ -105,7 +105,7 @@ extern _EXPORT UINT32 PortmasterRecvVerdictRequest(PortmasterPacketInfo *packetI
 
     // Process verdict request
     if (success && (dwBytesRead > 0)) {
-        INFO("Bytes read : %d, rc = %d", dwBytesRead, rc);
+        INFO("Bytes read : %d, rc = %d", dwBytesRead, success);
         PortmasterPacketInfo *PacketInfoFromDevice = (PortmasterPacketInfo*)ReadBuffer;
         packetToString(PacketInfoFromDevice);
         memcpy(packetInfo, PacketInfoFromDevice, sizeof(PortmasterPacketInfo));
