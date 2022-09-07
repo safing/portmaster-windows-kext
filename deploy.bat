@@ -2,7 +2,7 @@ echo Compile, Sign and Copy the Kernel Driver with the dll
 set WDDK_SOURCE=install\WDDK\x64\Debug\pm_kernel64.sys
 del WDDK_SOURCE
 
-set DLL_SOURCE=install\DLL\x64\pm_kernel_glue.dll
+set DLL_SOURCE=install\DLL\x64\Debug\pm_kernel_glue.dll
 del DLL_SOURCE
 
 msbuild /t:Build /p:Configuration=Debug /p:Platform=x64
