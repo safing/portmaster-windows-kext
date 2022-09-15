@@ -57,7 +57,7 @@ static HMODULE module = NULL;
 /*
  * Dll Entry
  */
-extern bool APIENTRY portmasterDllEntry(HANDLE module0, DWORD reason, LPVOID reserved) {
+extern _EXPORT bool APIENTRY portmasterDllEntry(HANDLE module0, DWORD reason, LPVOID reserved) {
     HANDLE event = INVALID_HANDLE_VALUE;
     switch (reason) {
         case DLL_PROCESS_ATTACH:
