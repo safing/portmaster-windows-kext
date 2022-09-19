@@ -31,12 +31,10 @@
  *
  */
 int createVerdictCache(UINT32 maxSize, VerdictCache **verdictCache) {
-    VerdictCache* newVerdictCache;
-
     if (!maxSize) {
         return 1;
     }
-    newVerdictCache = _ALLOC(sizeof(VerdictCache), 1);
+    VerdictCache* newVerdictCache = _ALLOC(sizeof(VerdictCache), 1);
     if (!newVerdictCache) {
         return 1;
     }
