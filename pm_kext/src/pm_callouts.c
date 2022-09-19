@@ -255,6 +255,7 @@ FWP_ACTION_TYPE classifySingle(
 
     bool copiedNBForPacketInfo = false;
     size_t dataLength = 0;
+    size_t dataLengthS = nb->stDataLength;
     void *data = NULL;
     status = borrowPacketDataFromNB(nb, ipHeaderSize + 4, &data);
     if (!NT_SUCCESS(status)) {
@@ -341,7 +342,25 @@ FWP_ACTION_TYPE classifySingle(
 
     // Check verdict normally if we did not detect a packet that should be reverse DNAT-ed.
     if (verdict == PORTMASTER_VERDICT_GET) {
-        verdict = checkVerdict(verdictCache, packetInfo);
+        VerdictCacheItem *item = NULL;
+        verdict = checkVerdict(verdictCache, packetInfo, &item);
+
+        switch(verdict) {
+            case PORTMASTER_VERDICT_ACCEPT:
+            case PORTMASTER_VERDICT_REDIR_DNS:
+            case PORTMASTER_VERDICT_REDIR_TUNNEL: {
+                if(item != NULL && dataLengthS > 0) {
+                    if(packetInfo->direction == DIRECTION_INBOUND) {
+                        item->recBytes += dataLengthS;
+                    } else {
+                        item->sendBytes += dataLengthS;
+                    }
+                }
+                break;
+            }
+            default:
+            break;
+        }
 
         // If packet should be DNAT-ed set redirInfo to packetInfo.
         if (verdict == PORTMASTER_VERDICT_REDIR_DNS || verdict == PORTMASTER_VERDICT_REDIR_TUNNEL) {
@@ -958,4 +977,29 @@ void classifyOutboundIPv6(
         outboundV6PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
     classifyMultiple(&outboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
+}
+
+void getSendRecv(PortmasterPacketInfo *info, UINT64 *send, UINT64 *recv) {
+    KLOCK_QUEUE_HANDLE lockHandle = { 0 };
+    VerdictCache* verdictCache = verdictCacheV4;
+    KSPIN_LOCK* verdictCacheLock = &verdictCacheV4Lock;
+
+    // Switch to IPv6 cache and lock if needed.
+    if (info->ipV6) {
+        verdictCache = verdictCacheV6;
+        verdictCacheLock = &verdictCacheV6Lock;
+    }
+
+    // Acquire exclusive lock as we are changing the verdict cache.
+    VerdictCacheItem *item = NULL;
+    KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lockHandle);
+    checkVerdict(verdictCache, info, &item);
+    if(item != NULL) {
+        *send = item->sendBytes;
+        *recv = item->recBytes;
+
+        item->sendBytes = 0;
+        item->recBytes = 0;
+    }
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
 }

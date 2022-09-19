@@ -40,6 +40,16 @@ typedef struct {
     UINT32 packetSize;
 } PortmasterPacketInfo;
 
+typedef struct {
+    PortmasterPacketInfo info;
+    UINT64 bytesSend;
+    UINT64 bytesReceived;
+} PortmasterConnection;
+
+typedef struct {
+    UINT64 bytesSend;
+    UINT64 bytesReceived;
+} Stats;
 
 /*
  * Packet Info Flags
@@ -172,12 +182,12 @@ typedef struct {
  */
 typedef struct {
     UINT32 id;
-    UINT32 len;         //preset with maxlen of payload from caller -> set with acutal len of payload from receiver
+    UINT32 len;         //preset with maxlen of payload from caller -> set with actual len of payload from receiver
 } PortmasterPayload;
 
 
 /*
- * Currently unused returncodes
+ * Currently unused return codes
  */
 #define PM_STATUS_SUCCESS       0x00
 #define PM_STATUS_BUF_TOO_SMALL 0x101
@@ -210,6 +220,9 @@ typedef struct {
 
 #define IOCTL_GET_PAYLOAD \
 CTL_CODE(SIOCTL_TYPE, 0x804, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
+
+#define IOCTL_CONNECTION_INFO \
+    CTL_CODE(SIOCTL_TYPE, 0x806, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
 
 
 /****************************************************************************/

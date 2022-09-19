@@ -101,6 +101,8 @@ extern _EXPORT int PortmasterSetVerdict(__in UINT32 packetID, __in verdict_t ver
  */
 extern _EXPORT UINT32 PortmasterGetPayload(__in UINT32 packetID, __out UINT8* buf, __inout UINT32* len);
 
+extern _EXPORT UINT64 PortmasterStatistic();
+
 #ifdef __cplusplus
 }
 #endif

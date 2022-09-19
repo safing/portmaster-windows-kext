@@ -63,5 +63,6 @@ NTSTATUS genericNotify(
 NTSTATUS genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext);
 
 void respondWithVerdict(UINT32 id, verdict_t verdict);
+void getSendRecv(PortmasterPacketInfo *info, UINT64 *send, UINT64 *recv);
 
 #endif // PM_CALLOUTS_H

@@ -273,7 +273,7 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
     PVOID pBuf = Irp->AssociatedIrp.SystemBuffer;
 
     PIO_STACK_LOCATION pIoStackLocation = IoGetCurrentIrpStackLocation(Irp);
-    int IoControlCode= pIoStackLocation->Parameters.DeviceIoControl.IoControlCode;
+    int IoControlCode = pIoStackLocation->Parameters.DeviceIoControl.IoControlCode;
     switch(IoControlCode) {
 #ifdef DEBUG_ON
         //Hello World with ke-us shared memory "Irp->AssociatedIrp.SystemBuffer"
@@ -383,6 +383,23 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
 
             Irp->IoStatus.Status = STATUS_SUCCESS;
             Irp->IoStatus.Information = 0;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return STATUS_SUCCESS;
+        }
+
+        case IOCTL_CONNECTION_INFO: {
+            UINT64 size = *((UINT64*) pBuf);
+            PortmasterConnection *connections = (PortmasterConnection*) ((char*)pBuf + sizeof(UINT64));
+            for(UINT64 i = 0; i < size; i++) {
+                PortmasterConnection *conn = &connections[i];
+                UINT64 send = 0;
+                UINT64 recv = 0;
+                getSendRecv(&conn->info, &send, &recv);
+                conn->bytesSend += send;
+                conn->bytesReceived += recv;
+            }
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            Irp->IoStatus.Information = size * sizeof(PortmasterConnection) + sizeof(UINT64);
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_SUCCESS;
         }

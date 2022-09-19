@@ -128,6 +128,8 @@ int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, ver
 
     newItem->packetInfo = packetInfo;
     newItem->verdict = verdict;
+    newItem->recBytes = 0;
+    newItem->sendBytes = 0;
 
     // insert as first item
     if (verdictCache->head) {
@@ -153,7 +155,7 @@ int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, ver
  * @return verdict
  *
  */
-verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo) {
+verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, VerdictCacheItem **foundItem) {
     if (!verdictCache || !packetInfo) {
         ERR("verdictCache 0p%xp or packet_info 0p%xp was null", verdictCache, packetInfo);
         return PORTMASTER_VERDICT_ERROR;
@@ -168,6 +170,9 @@ verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetI
     // check first item
     if (compareFullPacketInfo(packetInfo, verdictCache->head->packetInfo)) {
         DEBUG("compareFullPacketInfo successful");
+        // if(foundItem != NULL) {
+        *foundItem = verdictCache->head;
+        // }
         return verdictCache->head->verdict;
     }
 
@@ -192,6 +197,9 @@ verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetI
             verdictCache->head = item;
 
             // success
+            // if(foundItem != NULL) {
+            *foundItem = item;
+            // }
             return item->verdict;
         }
         item = item->next;

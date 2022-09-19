@@ -24,6 +24,8 @@ typedef struct VerdictCacheItem {
 
     PortmasterPacketInfo *packetInfo;
     verdict_t verdict;
+    UINT64 recBytes;
+    UINT64 sendBytes;
 } VerdictCacheItem;
 
 typedef struct {
@@ -81,7 +83,7 @@ int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, ver
  * @return verdict
  *
  */
-verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo);
+verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, VerdictCacheItem **foundItem);
 
 /**
  * @brief Checks packet for reverse redirection

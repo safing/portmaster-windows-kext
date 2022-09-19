@@ -31,6 +31,7 @@
 
 #include "pm_debug_dll.h"
 
+#include "pm_connections.c"
 
 /*
  * For the Portmaster Application, we only need one handle,
@@ -44,6 +45,7 @@ int logLevel = LEVEL_DEBUG;
 /****************************************************************************/
 /* Portmaster  API                                                          */
 /****************************************************************************/
+
 
 /*
  * Internal initialization for the kernel extension.
@@ -65,6 +67,8 @@ extern _EXPORT int PortmasterStart(const char* portmasterKextPath) {
         return rc;
     }
     INFO("OPENED and STARTED Portmaster Kernel Extension");
+
+    ConnectionsInit(100);
     return 0;
 }
 
@@ -87,6 +91,7 @@ extern _EXPORT int PortmasterStop() {
         rc = 0;
     }      
     system("sc stop " PORTMASTER_DEVICE_NAME_C);  //This is a question of taste, but it is a robust and solid solution
+    ConnectionsDestroy();
     return rc;
 }
 
@@ -113,6 +118,8 @@ extern _EXPORT int PortmasterRecvVerdictRequest(PortmasterPacketInfo *packetInfo
         PortmasterPacketInfo *PacketInfoFromDevice = (PortmasterPacketInfo*)ReadBuffer;
         packetToString(PacketInfoFromDevice);
         memcpy(packetInfo, PacketInfoFromDevice, sizeof(PortmasterPacketInfo));
+        PortmasterConnection conn = {*packetInfo, 0, 0};
+        ConnectionsAdd(conn);
         return ERROR_SUCCESS;
     } else {
         rc = GetLastError();
@@ -144,6 +151,17 @@ extern _EXPORT int PortmasterSetVerdict(UINT32 packet_id, verdict_t verdict) {
                 return rc;
         }
     }
+    return ERROR_SUCCESS;
+}
+
+
+extern _EXPORT UINT64 PortmasterStatistic() {
+    DWORD dwBytesRead = 0;
+    char ReadBuffer[100] = {0}; //unused
+    
+    int rc = DeviceIoControl(deviceHandle, IOCTL_CONNECTION_INFO, buffer, *connectionsCount * sizeof(PortmasterConnection) + sizeof(uint64_t), connectionsCount, *connectionsCount * sizeof(PortmasterConnection) + sizeof(uint64_t), &dwBytesRead, NULL);
+
+    printConn();
     return ERROR_SUCCESS;
 }
 
