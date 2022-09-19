@@ -122,7 +122,7 @@ int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, ver
         return 1;
     }
 
-    VerdictCacheItem *newItem = _ALLOC(sizeof(VerdictCache), 1);
+    VerdictCacheItem *newItem = _ALLOC(sizeof(VerdictCacheItem), 1);
     if(!newItem) {
         ERR("add_verdict tried to add NULL-Pointer verdict");
         return 2;
