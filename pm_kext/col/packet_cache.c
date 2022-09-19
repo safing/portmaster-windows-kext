@@ -128,14 +128,13 @@ int teardownPacketCache(PacketCache *packetCache) {
  *
  */
 uint32_t registerPacket(PacketCache* packetCache, PortmasterPacketInfo *packetInfo, void* packet, size_t packetLength) {
-    PacketCacheItem *newItem;
     DEBUG("registerPacket called");
     if(!packetCache || !packetInfo || !packet) {
         ERR("registerPacket - invalid params");
         return 0;
     }
 
-    newItem = _ALLOC(sizeof(PacketCacheItem), 1);
+    PacketCacheItem *newItem = _ALLOC(sizeof(PacketCacheItem), 1);
     if(!newItem) {
         ERR("registerPacket - could not allocate newItem");
         return 0;
