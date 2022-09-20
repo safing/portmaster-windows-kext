@@ -35,7 +35,7 @@ extern "C" {
 /*
  * Internal initialization for the kernel extension.
  */
-extern _EXPORT int PortmasterInit();
+extern _EXPORT UINT32 PortmasterInit();
 
 /*
  * Start intercepting packets.  This is called once when Portmaster starts
@@ -47,7 +47,7 @@ extern _EXPORT int PortmasterInit();
  *          ERROR_FILE_NOT_FOUND:      path is invalid
  *          Windows System Error Code: according to https://docs.microsoft.com/en-us/windows/desktop/Debug/system-error-codes
  */
-extern _EXPORT int PortmasterStart(__in const char *portmasterKextPath);
+extern _EXPORT UINT32 PortmasterStart(__in const char *portmasterKextPath);
 
 /*
  * Stops the driver and unloads the kernel driver, which runs as a service
@@ -55,7 +55,7 @@ extern _EXPORT int PortmasterStart(__in const char *portmasterKextPath);
  * returns: ERROR_SUCCESS:   SUCCESS
  *          windows System Error Code: according to https://docs.microsoft.com/en-us/windows/desktop/Debug/system-error-codes
  */
-extern _EXPORT int PortmasterStop();
+extern _EXPORT UINT32 PortmasterStop();
 
 /*
  * "Blocks" the application till unknown packet is received.
@@ -68,7 +68,7 @@ extern _EXPORT int PortmasterStop();
  *          ERROR_INVALID_DATA:     No Data received (e.g. Timeout)
  *          windows System Error Code: according to https://docs.microsoft.com/en-us/windows/desktop/Debug/system-error-codes
  */
-extern _EXPORT int PortmasterRecvVerdictRequest(__out PortmasterPacketInfo *packetInfo);
+extern _EXPORT UINT32 PortmasterRecvVerdictRequest(__out PortmasterPacketInfo *packetInfo);
 
 
 /*
@@ -84,7 +84,7 @@ extern _EXPORT int PortmasterRecvVerdictRequest(__out PortmasterPacketInfo *pack
  * returns: ERROR_SUCCESS:   SUCCESS
  *          windows System Error Code: according to https://docs.microsoft.com/en-us/windows/desktop/Debug/system-error-codes
  */
-extern _EXPORT int PortmasterSetVerdict(__in UINT32 packetID, __in verdict_t verdict);
+extern _EXPORT UINT32 PortmasterSetVerdict(__in UINT32 packetID, __in verdict_t verdict);
 
 /*
  * Get Payload of packetID
@@ -100,6 +100,14 @@ extern _EXPORT int PortmasterSetVerdict(__in UINT32 packetID, __in verdict_t ver
             any GetLastError():        in case of unsuccessful communication with kernel (DeviceIoControl)
  */
 extern _EXPORT UINT32 PortmasterGetPayload(__in UINT32 packetID, __out UINT8* buf, __inout UINT32* len);
+
+/*
+ * Get Reset connection cache
+ *
+ * returns: ERROR_SUCCESS:             on success
+            any GetLastError():        in case of unsuccessful communication with kernel (DeviceIoControl)
+ */
+extern _EXPORT UINT32 PortmasterClearCache();
 
 #ifdef __cplusplus
 }

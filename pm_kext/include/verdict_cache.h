@@ -54,6 +54,14 @@ int createVerdictCache(UINT32 maxSize, VerdictCache **verdict_cache);
 int cleanVerdictCache(VerdictCache *verdictCache, PortmasterPacketInfo **packetInfo);
 
 /**
+ * @brief Remove all items from verdict cache
+ *
+ * @par    verdict_cache = verdict_cache to use
+ *
+ */
+void clearAllEntriesFromVerdictCache(VerdictCache *verdictCache);
+
+/**
  * @brief Tears down the verdict cache
  *
  * @par    verdictCache = verdict cache to use

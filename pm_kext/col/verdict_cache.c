@@ -74,8 +74,9 @@ int cleanVerdictCache(VerdictCache *verdictCache, PortmasterPacketInfo **packetI
             // delete next of new last item
             lastItem->prev->next = NULL;
         } else {
-            // reset tail (list is empty!)
+            // list is empty! reset it
             verdictCache->tail = NULL;
+            verdictCache->head = NULL;
         }
 
         // set return value
@@ -89,6 +90,24 @@ int cleanVerdictCache(VerdictCache *verdictCache, PortmasterPacketInfo **packetI
     }
 
     return 1;
+}
+
+/**
+ * @brief Remove all items from verdict cache
+ *
+ * @par    verdictCache = verdict_cache to use
+ *
+ */
+void clearAllEntriesFromVerdictCache(VerdictCache *verdictCache) {
+    VerdictCacheItem *item = verdictCache->head;
+    while(item != NULL) {
+        VerdictCacheItem *next = item->next;
+        _FREE(item);
+        item = next;
+    }
+    verdictCache->size = 0;
+    verdictCache->head = NULL;
+    verdictCache->tail = NULL;
 }
 
 
@@ -130,14 +149,14 @@ int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, ver
     newItem->verdict = verdict;
 
     // insert as first item
-    if (verdictCache->head) {
+    if (verdictCache->head != NULL) {
         newItem->next = verdictCache->head;
         verdictCache->head->prev = newItem;
     }
     verdictCache->head = newItem;
 
     // set tail if only item
-    if (!verdictCache->tail) {
+    if (verdictCache->tail == NULL) {
         verdictCache->tail = newItem;
     }
 

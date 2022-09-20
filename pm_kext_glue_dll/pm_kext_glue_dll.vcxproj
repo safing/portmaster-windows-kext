@@ -141,7 +141,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>GLUEDLL_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS;PM_VERSION_MAJOR=$(PM_VERSION_MAJOR);PM_VERSION_MINOR=$(PM_VERSION_MINOR);PM_VERSION_REVISION=$(PM_VERSION_REVISION);PM_VERSION_BUILD=$(PM_VERSION_BUILD)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>GLUEDLL_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS;PM_VERSION_MAJOR=$(PM_VERSION_MAJOR);PM_VERSION_MINOR=$(PM_VERSION_MINOR);PM_VERSION_REVISION=$(PM_VERSION_REVISION);PM_VERSION_BUILD=$(PM_VERSION_BUILD);DEBUG_ON</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
