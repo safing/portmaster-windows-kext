@@ -960,17 +960,23 @@ void classifyOutboundIPv6(
     classifyMultiple(&outboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
 }
 
+static void freePacketInfo(PortmasterPacketInfo *info, verdict_t verdict) {
+    if(info != NULL) {
+        portmasterFree(info);
+    }
+}
+
 void clearCache() {
     INFO("Cleaning all verdict cache");
     KLOCK_QUEUE_HANDLE lockHandle = {0};
 
     // Clear IPv4 verdict cache
     KeAcquireInStackQueuedSpinLock(&verdictCacheV4Lock, &lockHandle);
-    clearAllEntriesFromVerdictCache(verdictCacheV4);
+    clearAllEntriesFromVerdictCache(verdictCacheV4, freePacketInfo);
     KeReleaseInStackQueuedSpinLock(&lockHandle);
 
     // Clear IPv6 verdict cache
     KeAcquireInStackQueuedSpinLock(&verdictCacheV6Lock, &lockHandle);
-    clearAllEntriesFromVerdictCache(verdictCacheV6);
+    clearAllEntriesFromVerdictCache(verdictCacheV6, freePacketInfo);
     KeReleaseInStackQueuedSpinLock(&lockHandle);
 }

@@ -57,9 +57,10 @@ int cleanVerdictCache(VerdictCache *verdictCache, PortmasterPacketInfo **packetI
  * @brief Remove all items from verdict cache
  *
  * @par    verdict_cache = verdict_cache to use
+ * @par    freeData = callback function that is executed for each item before delete were the data of the item can be deleted
  *
  */
-void clearAllEntriesFromVerdictCache(VerdictCache *verdictCache);
+void clearAllEntriesFromVerdictCache(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t));
 
 /**
  * @brief Tears down the verdict cache
