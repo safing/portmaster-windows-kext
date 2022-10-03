@@ -9,5 +9,5 @@ msbuild /t:Build /p:Configuration=Debug /p:Platform=x64
 SignTool sign /v /s TestCertStoreName /n TestCertName /fd SHA256 %WDDK_SOURCE%
 
 echo Copy the Kernel Driver to Portmaster updates dir as dev version
-copy %WDDK_SOURCE% C:\Dev\Safing\test_data\updates\windows_amd64\kext\portmaster-kext_v0-0-0.sys
-copy %DLL_SOURCE% C:\Dev\Safing\test_data\updates\windows_amd64\kext\portmaster-kext_v0-0-0.dll
+copy %WDDK_SOURCE% C:\ProgramData\Safing\Portmaster\updates\windows_amd64\kext\portmaster-kext_v0-0-0.sys
+copy %DLL_SOURCE% C:\ProgramData\Safing\Portmaster\updates\windows_amd64\kext\portmaster-kext_v0-0-0.dll

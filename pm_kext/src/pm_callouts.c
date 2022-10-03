@@ -960,6 +960,7 @@ void classifyOutboundIPv6(
     classifyMultiple(&outboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
 }
 
+// Used for freeing the packet info memory when clearing the packet cache
 static void freePacketInfo(PortmasterPacketInfo *info, verdict_t verdict) {
     if(info != NULL) {
         portmasterFree(info);
@@ -972,11 +973,13 @@ void clearCache() {
 
     // Clear IPv4 verdict cache
     KeAcquireInStackQueuedSpinLock(&verdictCacheV4Lock, &lockHandle);
+    // freePacketInfo will free the packet info stored in every item of the cache
     clearAllEntriesFromVerdictCache(verdictCacheV4, freePacketInfo);
     KeReleaseInStackQueuedSpinLock(&lockHandle);
 
     // Clear IPv6 verdict cache
     KeAcquireInStackQueuedSpinLock(&verdictCacheV6Lock, &lockHandle);
+    // freePacketInfo will free the packet info stored in every item of the cache
     clearAllEntriesFromVerdictCache(verdictCacheV6, freePacketInfo);
     KeReleaseInStackQueuedSpinLock(&lockHandle);
 }
