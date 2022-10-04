@@ -16,21 +16,46 @@
 #define VERDICT_CACHE_H
 
 #include "pm_common.h"
+#include "pm_utils.h"
 
+#ifndef __LINUX_ENV__
+#include <intsafe.h>
+typedef UINT8  uint8_t;
+typedef UINT16 uint16_t;
+typedef UINT32 uint32_t;
+typedef UINT64 uint64_t;
+#endif
+
+
+// https://troydhanson.github.io/uthash/userguide.html
+#define uthash_malloc(sz) _ALLOC(sz, 1)
+#define uthash_free(ptr, sz) _FREE(ptr)
+#define uthash_fatal
+#define HASH_NO_STDINT 1
+#include "uthash.h"
+
+
+typedef struct {
+    UINT32 localIP[4];
+    UINT16 localPort;
+    UINT32 remoteIP[4];
+    UINT16 remotePort;
+} VerdictCacheKey;
 
 typedef struct VerdictCacheItem {
-    struct VerdictCacheItem *prev;
-    struct VerdictCacheItem *next;
+    VerdictCacheKey key;
+    VerdictCacheKey redirectKey;
 
     PortmasterPacketInfo *packetInfo;
     verdict_t verdict;
+
+    UT_hash_handle hh;
+    UT_hash_handle hhRedirect;
 } VerdictCacheItem;
 
 typedef struct {
-    UINT32 size;
-    UINT32 maxSize;
-    VerdictCacheItem *head;
-    VerdictCacheItem *tail;
+    VerdictCacheItem *items;
+    VerdictCacheItem *redirect;
 } VerdictCache;
 
 /**

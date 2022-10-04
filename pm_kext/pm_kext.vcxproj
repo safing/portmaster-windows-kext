@@ -197,6 +197,7 @@
     <ClInclude Include="include\pm_packet.h" />
     <ClInclude Include="include\pm_register.h" />
     <ClInclude Include="include\pm_utils.h" />
+    <ClInclude Include="include\uthash.h" />
     <ClInclude Include="include\verdict_cache.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
