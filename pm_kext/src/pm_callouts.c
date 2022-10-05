@@ -962,6 +962,7 @@ void classifyOutboundIPv6(
 
 // Used for freeing the packet info memory when clearing the packet cache
 static void freePacketInfo(PortmasterPacketInfo *info, verdict_t verdict) {
+    UNREFERENCED_PARAMETER(verdict);
     if(info != NULL) {
         portmasterFree(info);
     }
