@@ -217,7 +217,7 @@ HANDLE portmasterKernelOpen(const char* portmasterKextPath) {
     INFO("Trying to CreateFile %ls", L"\\\\.\\" PORTMASTER_DEVICE_NAME);
     HANDLE handle = CreateFile( L"\\\\.\\" PORTMASTER_DEVICE_NAME,
             GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+            0, NULL);
 
     INFO("portmasterKernelOpen value of handle (*void) == 0xp%p", handle);
     if (handle == INVALID_HANDLE_VALUE) {
@@ -248,7 +248,7 @@ HANDLE portmasterKernelOpen(const char* portmasterKextPath) {
 
         handle = CreateFile(L"\\\\.\\" PORTMASTER_DEVICE_NAME,
                 GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
-                FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
+                0,
                 INVALID_HANDLE_VALUE);
 
         //Schedule the service to be deleted (once all handles are closed).

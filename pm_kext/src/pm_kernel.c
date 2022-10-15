@@ -62,8 +62,19 @@ DRIVER_UNLOAD DriverUnload;
 EVT_WDF_DRIVER_UNLOAD emptyEventUnload;
 
 //IO CTL
+__drv_dispatchType(IRP_MJ_CREATE)/*
+__drv_dispatchType(IRP_MJ_CLOSE)
+DRIVER_DISPATCH driverCreateClose;*/
+NTSTATUS driverCreateClose(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP Irp);
+
 __drv_dispatchType(IRP_MJ_DEVICE_CONTROL) DRIVER_DISPATCH driverDeviceControl;
 NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP Irp);
+
+//__drv_dispatchType(IRP_MJ_READ) DRIVER_DISPATCH driverRead;
+NTSTATUS driverRead(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP Irp);
+
+//__drv_dispatchType(IRP_MJ_WRITE) DRIVER_DISPATCH driverWrite;
+NTSTATUS driverWrite(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP Irp);
 
 // Initializes required WDFDriver and WDFDevice objects
 NTSTATUS InitDriverObject(DRIVER_OBJECT *driverObject, UNICODE_STRING *registryPath,
@@ -141,8 +152,14 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING registry
     // Define this driver's unload function
     driverObject->DriverUnload = DriverUnload;
 
+    driverObject->MajorFunction[IRP_MJ_CREATE] = driverCreateClose;
+    driverObject->MajorFunction[IRP_MJ_CLOSE] = driverCreateClose;
+
     // Define IO Control via WDDK's IO Request Packet structure
     driverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = driverDeviceControl;
+
+    driverObject->MajorFunction[IRP_MJ_READ] = driverRead;
+    driverObject->MajorFunction[IRP_MJ_WRITE] = driverWrite;
 
 
     // Cleanup and handle any errors
@@ -273,7 +290,7 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
     PVOID pBuf = Irp->AssociatedIrp.SystemBuffer;
 
     PIO_STACK_LOCATION pIoStackLocation = IoGetCurrentIrpStackLocation(Irp);
-    int IoControlCode= pIoStackLocation->Parameters.DeviceIoControl.IoControlCode;
+    int IoControlCode = pIoStackLocation->Parameters.DeviceIoControl.IoControlCode;
     switch(IoControlCode) {
 #ifdef DEBUG_ON
         //Hello World with ke-us shared memory "Irp->AssociatedIrp.SystemBuffer"
@@ -464,4 +481,52 @@ IOCTL_GET_PAYLOAD_EXIT:
             return STATUS_NOT_IMPLEMENTED;
         }
     }
+}
+
+NTSTATUS driverCreateClose(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp) {
+    Irp->IoStatus.Status = STATUS_SUCCESS;
+    Irp->IoStatus.Information = 0;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS driverRead(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp) {
+    PVOID pBuf = Irp->UserBuffer;
+
+    ERR("READ function !!!!!!!!");
+
+    PIO_STACK_LOCATION pIoStackLocation = IoGetCurrentIrpStackLocation(Irp);
+    char* buff = (char*)pBuf;
+    buff[0] = 33;
+    buff[1] = 35;
+    buff[2] = 37;
+    buff[3] = 39;
+    buff[4] = 56;
+
+    Irp->IoStatus.Status = STATUS_SUCCESS;
+    Irp->IoStatus.Information = 0;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS driverWrite(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp) {
+    PVOID pBuf = Irp->AssociatedIrp.SystemBuffer;
+
+    ERR("WRITE function !!!!!!!!");
+
+    PIO_STACK_LOCATION pIoStackLocation = IoGetCurrentIrpStackLocation(Irp);
+    char* buff = (char*)pBuf;
+    buff[0] = 33;
+    buff[1] = 35;
+    buff[2] = 37;
+    buff[3] = 39;
+    buff[4] = 56;
+
+    Irp->IoStatus.Status = STATUS_SUCCESS;
+    Irp->IoStatus.Information = 0;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+    return STATUS_SUCCESS;
 }

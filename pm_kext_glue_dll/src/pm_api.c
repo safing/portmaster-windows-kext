@@ -65,6 +65,19 @@ extern _EXPORT UINT32 PortmasterStart(const char* portmasterKextPath) {
         return rc;
     }
     INFO("OPENED and STARTED Portmaster Kernel Extension");
+
+    char buff[100];
+    DWORD read = 0;
+    bool allGood = ReadFile(deviceHandle, (void*) buff, 5, &read, NULL);
+    if (allGood) {
+        INFO("%d %d %d %d %d\n", buff[0], buff[1], buff[2], buff[3], buff[4]);
+    }
+    else {
+        INFO("%d %d %d %d %d\n", buff[0], buff[1], buff[2], buff[3], buff[4]);
+        INFO("Falied to read\n");
+        DWORD rc = GetLastError();
+        WARN("GetLastError= 0x%x", rc);
+    }
     return ERROR_SUCCESS;
 }
 
@@ -174,8 +187,13 @@ extern _EXPORT UINT32 PortmasterGetPayload(UINT32 packet_id, UINT8* buf, UINT32*
 }
 
 extern _EXPORT UINT32 PortmasterClearCache() {
-    UINT32 rc = DeviceIoControl(deviceHandle, IOCTL_CLEAR_CACHE, NULL, 0, NULL, 0, NULL, NULL);
-    return rc;
+    bool success = DeviceIoControl(deviceHandle, IOCTL_CLEAR_CACHE, NULL, 0, NULL, 0, NULL, NULL);
+    if(!success) {
+        UINT32 rc = GetLastError();
+        WARN("Failed to clear cache: %d", rc);
+        return rc;
+    }
+    return ERROR_SUCCESS;
 }
 
 
