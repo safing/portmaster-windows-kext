@@ -40,9 +40,13 @@ typedef struct {
     UINT16 localPort;
     UINT32 remoteIP[4];
     UINT16 remotePort;
+    UINT8 protocol;
+
 } VerdictCacheKey;
 
 typedef struct VerdictCacheItem {
+    bool used;
+    UINT64 lastAccessed; 
     VerdictCacheKey key;
     VerdictCacheKey redirectKey;
 
@@ -54,8 +58,13 @@ typedef struct VerdictCacheItem {
 } VerdictCacheItem;
 
 typedef struct {
-    VerdictCacheItem *items;
-    VerdictCacheItem *redirect;
+    VerdictCacheItem *map;
+    VerdictCacheItem *mapRedirect;
+
+    VerdictCacheItem *itemPool;
+    UINT32 maxSize;
+    UINT32 *freeItemIndexes;
+    UINT32 numberOfFreeItems;
 } VerdictCache;
 
 /**
@@ -76,7 +85,7 @@ int createVerdictCache(UINT32 maxSize, VerdictCache **verdict_cache);
  * @return error code
  *
  */
-int cleanVerdictCache(VerdictCache *verdictCache, PortmasterPacketInfo **packetInfo);
+// int cleanVerdictCache(VerdictCache *verdictCache, PortmasterPacketInfo **packetInfo);
 
 /**
  * @brief Remove all items from verdict cache
@@ -104,7 +113,7 @@ int teardownVerdictCache(VerdictCache *verdictCache);
  * @return error code
  *
  */
-int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, verdict_t verdict);
+int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, verdict_t verdict, PortmasterPacketInfo **removedPacketInfo);
 
 /**
  * @brief Checks packet for verdict

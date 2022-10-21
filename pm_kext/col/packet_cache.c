@@ -112,9 +112,19 @@ int cleanPacketCache(PacketCache *packetCache, PortmasterPacketInfo **packetInfo
  *
  */
 int teardownPacketCache(PacketCache *packetCache) {
-    // FIXME: implement
-    UNREFERENCED_PARAMETER(packetCache);
-    WARN("teardown_packet_cache not yet implemented");
+    if(packetCache == NULL) {
+        return 0;
+    }
+    
+    PacketCacheItem *item = packetCache->head;
+    while (item != NULL) {
+        PacketCacheItem *current = item;
+        item = item->next;
+        _FREE(current->packetInfo);
+        _FREE(current);
+    }
+
+    _FREE(packetCache);
     return 0;
 }
 
@@ -122,7 +132,7 @@ int teardownPacketCache(PacketCache *packetCache) {
  * @brief Registers a packet
  *
  * @par    packetCache = packet cache to use
- * @par    packet_info  = pointer to packet_info
+ * @par    packetInfo  = pointer to packetInfo
  * @par    packet       = pointer to packet
  * @return new packet ID
  *
@@ -177,8 +187,7 @@ uint32_t registerPacket(PacketCache* packetCache, PortmasterPacketInfo *packetIn
  *
  */
 int retrievePacket(PacketCache *packetCache, uint32_t packetID, PortmasterPacketInfo **packetInfo, void **packet, size_t *packetLength) {
-    PacketCacheItem *item;
-    item = packetCache->head;
+    PacketCacheItem *item = packetCache->head;
     DEBUG("retrieve_packet called");
     while (item) {
         if (packetID == item->packetID) {

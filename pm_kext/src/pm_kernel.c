@@ -228,7 +228,7 @@ Exit:
     return status;
 }
 
-VOID DriverUnload(PDRIVER_OBJECT driverObject) {
+void DriverUnload(PDRIVER_OBJECT driverObject) {
     NTSTATUS status = STATUS_SUCCESS;
     UNICODE_STRING symlink = { 0 };
     UNREFERENCED_PARAMETER(driverObject);
@@ -250,17 +250,16 @@ VOID DriverUnload(PDRIVER_OBJECT driverObject) {
         FwpmEngineClose(filterEngineHandle);
         filterEngineHandle = NULL;
     }
+    deleteCache();
 
     RtlInitUnicodeString(&symlink, PORTMASTER_DOS_DEVICE_STRING);
     IoDeleteSymbolicLink(&symlink);
 
     INFO("--- Portmaster Kernel Extension unloaded ---");
-    return;
 }
 
-VOID emptyEventUnload(WDFDRIVER Driver) {
+void emptyEventUnload(WDFDRIVER Driver) {
     UNREFERENCED_PARAMETER(Driver);
-    return;
 }
 
 // driverDeviceControl communicates with Userland via
@@ -270,10 +269,10 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
 
     //Set pBuf pointer to Irp->AssociatedIrp.SystemBuffer, which was filled in userland
     //pBuf is also used to return memory from kernel to userland
-    PVOID pBuf = Irp->AssociatedIrp.SystemBuffer;
+    void *pBuf = Irp->AssociatedIrp.SystemBuffer;
 
     PIO_STACK_LOCATION pIoStackLocation = IoGetCurrentIrpStackLocation(Irp);
-    int IoControlCode= pIoStackLocation->Parameters.DeviceIoControl.IoControlCode;
+    int IoControlCode = pIoStackLocation->Parameters.DeviceIoControl.IoControlCode;
     switch(IoControlCode) {
 #ifdef DEBUG_ON
         //Hello World with ke-us shared memory "Irp->AssociatedIrp.SystemBuffer"

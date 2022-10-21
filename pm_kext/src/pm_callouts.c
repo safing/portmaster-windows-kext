@@ -138,15 +138,12 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
         KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lockHandle);
 
         // Add to verdict cache
-        rc = addVerdict(verdictCache, packetInfo, verdict);
-
-        // Free after adding.
-        int cleanRC = cleanVerdictCache(verdictCache, &packetInfoToFree);
+        rc = addVerdict(verdictCache, packetInfo, verdict, &packetInfoToFree);
 
         KeReleaseInStackQueuedSpinLock(&lockHandle);
 
         // Free returned packet info.
-        if (cleanRC == 0) {
+        if (packetInfoToFree == NULL) {
             portmasterFree(packetInfoToFree);
         }
 
@@ -446,23 +443,20 @@ FWP_ACTION_TYPE classifySingle(
 
         // If fast-tracked, add verdict to cache immediately.
         if (fastTracked) {
-            PortmasterPacketInfo *packet_info_to_free;
+            PortmasterPacketInfo *packetInfoToFree;
             int cleanRC;
 
             // Acquire exclusive lock as we are changing the verdict cache.
             KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lockHandleVC);
 
             // Add to verdict cache
-            rc = addVerdict(verdictCache, copiedPacketInfo, PORTMASTER_VERDICT_ACCEPT);
-
-            // Free after adding.
-            cleanRC = cleanVerdictCache(verdictCache, &packet_info_to_free);
+            rc = addVerdict(verdictCache, copiedPacketInfo, PORTMASTER_VERDICT_ACCEPT, &packetInfoToFree);
 
             KeReleaseInStackQueuedSpinLock(&lockHandleVC);
 
             // Free returned packet info.
-            if (cleanRC == 0) {
-                portmasterFree(packet_info_to_free);
+            if (packetInfoToFree != NULL) {
+                portmasterFree(packetInfoToFree);
             }
 
             // In case of failure, abort and free copied data.
@@ -973,4 +967,15 @@ void clearCache() {
     KeAcquireInStackQueuedSpinLock(&verdictCacheV6Lock, &lockHandle);
     clearAllEntriesFromVerdictCache(verdictCacheV6);
     KeReleaseInStackQueuedSpinLock(&lockHandle);
+}
+
+void deleteCache() {
+    teardownVerdictCache(verdictCacheV4);
+    teardownVerdictCache(verdictCacheV6);
+
+    verdictCacheV4 = NULL;
+    verdictCacheV6 = NULL;
+
+    teardownPacketCache(globalPacketCache);
+    globalPacketCache = NULL;
 }

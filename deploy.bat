@@ -5,6 +5,7 @@ del WDDK_SOURCE
 set DLL_SOURCE=install\DLL\x64\Debug\pm_kernel_glue.dll
 del DLL_SOURCE
 
+msbuild /t:Clean /p:Configuration=Debug /p:Platform=x64
 msbuild /t:Build /p:Configuration=Debug /p:Platform=x64
 SignTool sign /v /s TestCertStoreName /n TestCertName /fd SHA256 %WDDK_SOURCE%
 
