@@ -51,6 +51,8 @@ static VerdictCacheKey getCacheRedirectKey(PortmasterPacketInfo *info) {
  *
  */
 int createVerdictCache(UINT32 maxSize, VerdictCache **verdictCache) {
+    maxSize = 30;
+
     if (maxSize == 0) {
         return 1;
     }
@@ -89,15 +91,18 @@ int createVerdictCache(UINT32 maxSize, VerdictCache **verdictCache) {
  * @brief Remove all items from verdict cache
  *
  * @par    verdictCache = verdict_cache to use
+ * @par    freeData = callback function that is executed for each item before delete were the data of the item can be deleted
  *
  */
-void clearAllEntriesFromVerdictCache(VerdictCache *verdictCache) {
+
+void clearAllEntriesFromVerdictCache(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t)) {
     HASH_CLEAR(hh, verdictCache->map);
     HASH_CLEAR(hhRedirect, verdictCache->mapRedirect);
 
     for(UINT32 i = 0; i < verdictCache->maxSize; i++) {
         verdictCache->freeItemIndexes[i] = i;
         verdictCache->itemPool[i].used = false;
+        freeData(verdictCache->itemPool[i].packetInfo, verdictCache->itemPool[i].verdict);
     }
 
     verdictCache->numberOfFreeItems = verdictCache->maxSize;
@@ -112,12 +117,12 @@ void clearAllEntriesFromVerdictCache(VerdictCache *verdictCache) {
  * @return error code
  *
  */
-int teardownVerdictCache(VerdictCache *verdictCache) {
+int teardownVerdictCache(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t)) {
     if(verdictCache == NULL) {
         return 0;
     }
     
-    clearAllEntriesFromVerdictCache(verdictCache);
+    clearAllEntriesFromVerdictCache(verdictCache, freeData);
     _FREE(verdictCache->freeItemIndexes);
     _FREE(verdictCache->itemPool);
     _FREE(verdictCache);
@@ -137,6 +142,13 @@ static VerdictCacheItem *getOldestAccessTimeItem(VerdictCache *verdictCache) {
         }
     }
     return oldestItem;
+}
+
+static void resetItem(VerdictCache *verdictCache, VerdictCacheItem *item) {
+    HASH_DELETE(hh, verdictCache->map, item);
+    HASH_DELETE(hhRedirect, verdictCache->mapRedirect, item);    
+    memset(&item->hh, 0, sizeof(UT_hash_handle));
+    memset(&item->hhRedirect, 0, sizeof(UT_hash_handle));
 }
 
 /**
@@ -174,8 +186,7 @@ int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, ver
             return 1;
         }
         *removedPacketInfo = item->packetInfo;
-        HASH_DELETE(hh, verdictCache->map, item);
-        HASH_DELETE(hhRedirect, verdictCache->mapRedirect, item);
+        resetItem(verdictCache, item);
         newItem = item;
     }
 

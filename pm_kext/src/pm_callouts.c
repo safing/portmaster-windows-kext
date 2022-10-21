@@ -443,13 +443,11 @@ FWP_ACTION_TYPE classifySingle(
 
         // If fast-tracked, add verdict to cache immediately.
         if (fastTracked) {
-            PortmasterPacketInfo *packetInfoToFree;
-            int cleanRC;
-
             // Acquire exclusive lock as we are changing the verdict cache.
             KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lockHandleVC);
 
             // Add to verdict cache
+            PortmasterPacketInfo *packetInfoToFree = NULL;
             rc = addVerdict(verdictCache, copiedPacketInfo, PORTMASTER_VERDICT_ACCEPT, &packetInfoToFree);
 
             KeReleaseInStackQueuedSpinLock(&lockHandleVC);
@@ -954,24 +952,34 @@ void classifyOutboundIPv6(
     classifyMultiple(&outboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
 }
 
+// Used for freeing the packet info memory when clearing the packet cache
+static void freePacketInfo(PortmasterPacketInfo *info, verdict_t verdict) {
+    UNREFERENCED_PARAMETER(verdict);
+    if(info != NULL) {
+        portmasterFree(info);
+    }
+}
+
 void clearCache() {
     INFO("Cleaning all verdict cache");
     KLOCK_QUEUE_HANDLE lockHandle = {0};
 
     // Clear IPv4 verdict cache
     KeAcquireInStackQueuedSpinLock(&verdictCacheV4Lock, &lockHandle);
-    clearAllEntriesFromVerdictCache(verdictCacheV4);
+    // freePacketInfo will free the packet info stored in every item of the cache
+    clearAllEntriesFromVerdictCache(verdictCacheV4, freePacketInfo);
     KeReleaseInStackQueuedSpinLock(&lockHandle);
 
     // Clear IPv6 verdict cache
     KeAcquireInStackQueuedSpinLock(&verdictCacheV6Lock, &lockHandle);
-    clearAllEntriesFromVerdictCache(verdictCacheV6);
+    // freePacketInfo will free the packet info stored in every item of the cache
+    clearAllEntriesFromVerdictCache(verdictCacheV6, freePacketInfo);
     KeReleaseInStackQueuedSpinLock(&lockHandle);
 }
 
 void deleteCache() {
-    teardownVerdictCache(verdictCacheV4);
-    teardownVerdictCache(verdictCacheV6);
+    teardownVerdictCache(verdictCacheV4, freePacketInfo);
+    teardownVerdictCache(verdictCacheV6, freePacketInfo);
 
     verdictCacheV4 = NULL;
     verdictCacheV6 = NULL;

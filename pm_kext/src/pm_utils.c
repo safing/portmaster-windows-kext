@@ -16,11 +16,17 @@
  */
 
 void *portmasterMalloc(size_t size, bool paged) {
-    POOL_TYPE poolFlag = (paged ? POOL_FLAG_PAGED : POOL_FLAG_NON_PAGED);
+    POOL_TYPE poolFlag = (paged ? PagedPool : NonPagedPool);
     if (size == 0) {
         return NULL;
     }
-    void *pv = ExAllocatePool2(poolFlag, size, PORTMASTER_TAG); // Memory is zero initialized unless POOL_FLAG_UNINITIALIZED is specified.
+    // ExAllocatePoolWithTag is depercated but there is no working (tests) alternative for it in the old Windows versions 
+    // ExAllocatePoolZero -> complies but crashes the kernel
+    // ExAllocatePool2 -> avaliable with Windows 10, version 2004 and after (release around 2020)
+    void *pv = ExAllocatePoolWithTag(poolFlag, size, PORTMASTER_TAG);
+    if (pv != 0) {
+        RtlZeroMemory(pv, size);
+    }
     return pv;
 }
 
