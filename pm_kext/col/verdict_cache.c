@@ -51,8 +51,6 @@ static VerdictCacheKey getCacheRedirectKey(PortmasterPacketInfo *info) {
  *
  */
 int createVerdictCache(UINT32 maxSize, VerdictCache **verdictCache) {
-    maxSize = 30;
-
     if (maxSize == 0) {
         return 1;
     }
