@@ -23,6 +23,7 @@ void *portmasterMalloc(size_t size, bool paged) {
     // ExAllocatePoolWithTag is depercated but there is no working (tests) alternative for it in the old Windows versions 
     // ExAllocatePoolZero -> complies but crashes the kernel
     // ExAllocatePool2 -> avaliable with Windows 10, version 2004 and after (release around 2020)
+    #pragma warning(suppress : 4996)
     void *pv = ExAllocatePoolWithTag(poolFlag, size, PORTMASTER_TAG);
     if (pv != 0) {
         RtlZeroMemory(pv, size);

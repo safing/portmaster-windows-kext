@@ -23,28 +23,17 @@
 #endif
 
 typedef struct PacketCacheItem {
-    struct PacketCacheItem *prev;
-    struct PacketCacheItem *next;
-
-    uint32_t packetID;
+    UINT32 packetID;
     PortmasterPacketInfo *packetInfo;
     void *packet;
     size_t packetLength;
-    /*
-    COMPARTMENT_ID compartmentId;
-    IF_INDEX interfaceIndex;
-    IF_INDEX subInterfaceIndex;
-    */
 } PacketCacheItem;
 
 typedef struct  {
-    uint32_t size;
-    uint32_t maxSize;
-    uint32_t nextPacketID;
-    PacketCacheItem *head;
-    PacketCacheItem *tail;
+    PacketCacheItem *packets;
+    UINT32 maxSize;
+    UINT32 nextPacketID;
 } PacketCache;
-
 
 extern PacketCache *globalPacketCache;
 extern KSPIN_LOCK globalPacketCacheLock;
@@ -61,24 +50,13 @@ extern KSPIN_LOCK globalPacketCacheLock;
 int createPacketCache(uint32_t maxSize, PacketCache **packetCache);
 
 /**
- * @brief Cleans the packet cache
- *
- * @par    packetCache = packet_cache to use
- * @par    packetInfo  = returns PORTMASTER_PACKET_INFO to free
- * @par    packet      = returns void to free
- * @return error code
- *
- */
-int cleanPacketCache(PacketCache *packetCache, PortmasterPacketInfo **packetInfo, void **packet);
-
-/**
  * @brief Tears down the packet cache
  *
  * @par    packet_cache = packet_cache to use
  * @return error code
  *
  */
-int teardownPacketCache(PacketCache *packetCache);
+int teardownPacketCache(PacketCache *packetCache, void(*freeData)(PortmasterPacketInfo*, void*));
 
 /**
  * @brief Registers a packet
@@ -89,7 +67,7 @@ int teardownPacketCache(PacketCache *packetCache);
  * @return new packet ID
  *
  */
-uint32_t registerPacket(PacketCache *packetCache, PortmasterPacketInfo *packetInfo, void *packet, size_t packetLength);
+uint32_t registerPacket(PacketCache *packetCache, PortmasterPacketInfo *packetInfo, void *packet, size_t packetLength, PortmasterPacketInfo **oldPacketInfo, void **oldPacket);
 
 /**
  * @brief Retrieves and deletes a packet from list, if it exists.

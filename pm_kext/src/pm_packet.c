@@ -29,47 +29,86 @@ static NTSTATUS sendICMPBlockedPacket(PortmasterPacketInfo* packetInfo, void* or
 
 static void freeAfterInject(void *context, NET_BUFFER_LIST *nbl, BOOLEAN dispatch_level);
 
-static HANDLE injectV4Handle = NULL;
-static HANDLE injectV6Handle = NULL;
+// We need separate handles for In/Out for the redirect to work properly. See the use of FWPS_PACKET_INJECTED_BY_SELF
+static HANDLE injectV4InHandle = NULL;
+static HANDLE injectV4OutHandle = NULL;
+static HANDLE injectV6InHandle = NULL;
+static HANDLE injectV6OutHandle = NULL;
 
 NTSTATUS initializeInjectHandles() {
-     // Create the packet injection handles.
+    // Create the packet injection handles.
     NTSTATUS status = FwpsInjectionHandleCreate(AF_INET,
             FWPS_INJECTION_TYPE_NETWORK,
-            &injectV4Handle);
+            &injectV4InHandle);
     if (!NT_SUCCESS(status)) {
         ERR("failed to create WFP in4 injection handle", status);
         return status;
     }
 
+    status = FwpsInjectionHandleCreate(AF_INET,
+            FWPS_INJECTION_TYPE_NETWORK,
+            &injectV4OutHandle);
+    if (!NT_SUCCESS(status)) {
+        ERR("failed to create WFP out4 injection handle", status);
+        return status;
+    }
+
     status = FwpsInjectionHandleCreate(AF_INET6,
             FWPS_INJECTION_TYPE_NETWORK,
-            &injectV6Handle);
+            &injectV6InHandle);
     if (!NT_SUCCESS(status)) {
         ERR("failed to create WFP in6 injection handle", status);
         return status;
     }
 
+    status = FwpsInjectionHandleCreate(AF_INET6,
+            FWPS_INJECTION_TYPE_NETWORK,
+            &injectV6OutHandle);
+    if (!NT_SUCCESS(status)) {
+        ERR("failed to create WFP out6 injection handle", status);
+        return status;
+    }
+
+
     return STATUS_SUCCESS;
 }
 
 void destroyInjectHandles() {
-    if (injectV4Handle != NULL) {
-        FwpsInjectionHandleDestroy(injectV4Handle);
-        injectV4Handle = NULL;
+    if (injectV4InHandle != NULL) {
+        FwpsInjectionHandleDestroy(injectV4InHandle);
+        injectV4InHandle = NULL;
     }
 
-    if (injectV6Handle != NULL) {
-        FwpsInjectionHandleDestroy(injectV6Handle);
-        injectV6Handle = NULL;
+    if (injectV4OutHandle != NULL) {
+        FwpsInjectionHandleDestroy(injectV4OutHandle);
+        injectV4OutHandle = NULL;
+    }
+
+    if (injectV6InHandle != NULL) {
+        FwpsInjectionHandleDestroy(injectV6InHandle);
+        injectV6InHandle = NULL;
+    }
+
+    if (injectV6OutHandle != NULL) {
+        FwpsInjectionHandleDestroy(injectV6OutHandle);
+        injectV6OutHandle = NULL;
     }
 }
 
-HANDLE getInjectionHandleForPacket(PortmasterPacketInfo *packetInfo) {
+HANDLE getInjectionHandleForPacket(PortmasterPacketInfo *packetInfo, bool forceOutbound) {
+    bool isLoopback = isPacketLoopback(packetInfo);
     if (packetInfo->ipV6 == 0) {
-        return injectV4Handle;
+        if(packetInfo->direction == DIRECTION_OUTBOUND || isLoopback || forceOutbound) {
+            return injectV4OutHandle;
+        } else {
+            return injectV4InHandle;
+        }
     } else{
-        return injectV6Handle;
+        if(packetInfo->direction == DIRECTION_OUTBOUND || isLoopback || forceOutbound) {
+            return injectV6OutHandle;
+        } else {
+            return injectV6InHandle;
+        }
     }
 }
 
@@ -84,8 +123,8 @@ NTSTATUS injectPacket(PortmasterPacketInfo *packetInfo, UINT8 direction, void *p
     }
 
     // get inject handle and check if packet is localhost
+    HANDLE handle = getInjectionHandleForPacket(packetInfo, forceSend);
     bool isLoopback = isPacketLoopback(packetInfo);
-    HANDLE handle = getInjectionHandleForPacket(packetInfo);
 
     // Inject packet. For localhost we must always send
     if (direction == DIRECTION_OUTBOUND || isLoopback || forceSend) {

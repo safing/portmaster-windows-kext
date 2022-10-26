@@ -40,7 +40,7 @@ void destroyInjectHandles();
  * @return inject handle
  *
  */
-HANDLE getInjectionHandleForPacket(PortmasterPacketInfo *packetInfo);
+HANDLE getInjectionHandleForPacket(PortmasterPacketInfo *packetInfo, bool forceOutbound);
 
 /**
  * @brief Injects a packet in the network loop
