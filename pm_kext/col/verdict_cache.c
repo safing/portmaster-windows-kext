@@ -96,6 +96,7 @@ void clearAllEntriesFromVerdictCache(VerdictCache *verdictCache, void(*freeData)
         }
     }
 
+    memset(verdictCache->itemPool, 0, sizeof(VerdictCacheItem) * verdictCache->maxSize);
     verdictCache->numberOfFreeItems = verdictCache->maxSize;
     verdictCache->map = NULL;
     verdictCache->mapRedirect = NULL;
@@ -149,7 +150,7 @@ static void resetItem(VerdictCache *verdictCache, VerdictCacheItem *item) {
  */
 int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, verdict_t verdict, PortmasterPacketInfo **removedPacketInfo) {
     if (verdictCache == NULL || packetInfo == NULL || verdict == 0) {
-        ERR("add_verdict NULL pointer exception verdictCache=0p%Xp, packetInfo=0p%Xp, verdict=0p%Xp ", verdictCache, packetInfo, verdict);
+        ERR("addVerdict NULL pointer exception verdictCache=0p%Xp, packetInfo=0p%Xp, verdict=0p%Xp ", verdictCache, packetInfo, verdict);
         return 1;
     }
 
@@ -158,6 +159,7 @@ int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, ver
     VerdictCacheKey key = getCacheKey(packetInfo);
     HASH_FIND(hh, verdictCache->map, &key, sizeof(VerdictCacheKey), newItem);
     if(newItem != NULL) {
+        INFO("addVerdict packet was already in");
         // already in
         return 3;
     }
@@ -168,7 +170,8 @@ int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, ver
     } else {
         VerdictCacheItem *item = getOldestAccessTimeItem(verdictCache);
         if(item == NULL) {
-            return 1;
+            ERR("addVerdict failed to find free element");
+            return 2;
         }
         *removedPacketInfo = item->packetInfo;
         resetItem(verdictCache, item);
