@@ -579,7 +579,7 @@ void classifyMultiple(
         return;
     }
 
-    // Get injection handle.
+    // Get block injection handle.
     handle = getBlockedPacketInjectHandle(packetInfo);
     injectionState = FwpsQueryPacketInjectionState(handle, nbl, NULL);
     if (injectionState == FWPS_PACKET_INJECTED_BY_SELF ||
@@ -592,7 +592,7 @@ void classifyMultiple(
         // Note: Hard Permit is now the default and is set immediately in the
         // callout.
 
-        INFO("packet was in loop, injectionState= %d ", injectionState);
+        INFO("blocked packet was in loop, injectionState= %d ", injectionState);
         return;
     }
 
@@ -996,7 +996,7 @@ void clearCache() {
     KeReleaseInStackQueuedSpinLock(&lockHandle);
 }
 
-void deleteCache() {
+void teardownCache() {
     teardownVerdictCache(verdictCacheV4, freePacketInfo);
     teardownVerdictCache(verdictCacheV6, freePacketInfo);
 

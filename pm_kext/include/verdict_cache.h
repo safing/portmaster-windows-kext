@@ -41,7 +41,6 @@ typedef struct {
     UINT32 remoteIP[4];
     UINT16 remotePort;
     UINT8 protocol;
-
 } VerdictCacheKey;
 
 typedef struct VerdictCacheItem {
@@ -137,22 +136,4 @@ verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetI
  *
  */
 verdict_t checkReverseRedirect(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, PortmasterPacketInfo **redirInfo);
-
-#endif
-
-#if 0
-#ifndef DYN_ALLOC_FREE
-#define DYN_ALLOC_FREE
-
-#ifdef BUILD_ENV_DRIVER
-
-
-#else
-
-#define _ALLOC(element_size, n_of_elements) calloc(element_size, n_of_elements)
-#define _FREE(p_element) free(p_element)
-
-#endif // DYN_ALLOC_FREE
-#endif // 0
-
 #endif // VERDICT_CACHE_H

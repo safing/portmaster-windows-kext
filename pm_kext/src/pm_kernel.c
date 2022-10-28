@@ -250,7 +250,7 @@ void DriverUnload(PDRIVER_OBJECT driverObject) {
         FwpmEngineClose(filterEngineHandle);
         filterEngineHandle = NULL;
     }
-    deleteCache();
+    teardownCache();
 
     RtlInitUnicodeString(&symlink, PORTMASTER_DOS_DEVICE_STRING);
     IoDeleteSymbolicLink(&symlink);

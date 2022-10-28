@@ -44,7 +44,7 @@ static UINT32 getIndexFromPacketID(PacketCache *packetCache, UINT32 packetID) {
  */
 int createPacketCache(uint32_t maxSize, PacketCache **packetCache) {
     if (maxSize == 0) {
-        ERR("PacketCache maxSize was 0");
+        ERR("createPacketCache PacketCache maxSize was 0");
         return 1;
     }
     INFO("createPacketCache with size %d", maxSize);

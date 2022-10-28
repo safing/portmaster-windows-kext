@@ -27,7 +27,7 @@ static void generateICMPBlockedPacketIPv6(void *originalPacket, size_t originalP
 static NTSTATUS sendTCPResetPacket(PortmasterPacketInfo* packetInfo, void* originalPacket, size_t originalPacketLength);
 static NTSTATUS sendICMPBlockedPacket(PortmasterPacketInfo* packetInfo, void* originalPacket, size_t originalPacketLength, bool useLocalHost);
 
-static void freeAfterInject(void *context, NET_BUFFER_LIST *nbl, BOOLEAN dispatch_level);
+static void freeAfterInject(void *context, NET_BUFFER_LIST *nbl, BOOLEAN dispatchLevel);
 
 // We need separate handles for In/Out for the redirect to work properly. See the use of FWPS_PACKET_INJECTED_BY_SELF
 static HANDLE injectV4InHandle = NULL;

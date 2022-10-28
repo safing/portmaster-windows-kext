@@ -66,6 +66,6 @@ void respondWithVerdict(UINT32 id, verdict_t verdict);
 
 
 void clearCache();
-void deleteCache();
+void teardownCache();
 
 #endif // PM_CALLOUTS_H

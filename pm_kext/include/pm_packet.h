@@ -41,8 +41,27 @@ void destroyInjectHandles();
  *
  */
 HANDLE getInjectionHandleForPacket(PortmasterPacketInfo *packetInfo);
+
+/**
+ * @brief Gets the appropriate inject handles for blocked packets
+ * 
+ * @par    packetInfo -> info for the packet
+ * @return inject handle
+ *
+ */
 HANDLE getBlockedPacketInjectHandle(PortmasterPacketInfo *packetInfo);
 
+/**
+ * @brief Injects a packet in the network loop with specific handle
+ *
+ * @par    handle -> inject handle
+ * @par    packetInfo -> info for the packet
+ * @par    direction -> direction on which the packet should be inject inbound or outbound
+ * @par    packet -> raw packet data
+ * @par    packetLength -> size of the raw packet data
+ * @return STATUS_SUCCESS on success
+ *
+ */
 NTSTATUS injectPacketWithHandle(HANDLE handle, PortmasterPacketInfo *packetInfo, UINT8 direction, void *packet, size_t packetLength);
 
 /**
@@ -52,7 +71,6 @@ NTSTATUS injectPacketWithHandle(HANDLE handle, PortmasterPacketInfo *packetInfo,
  * @par    direction -> direction on which the packet should be inject inbound or outbound
  * @par    packet -> raw packet data
  * @par    packetLength -> size of the raw packet data
- * @par    forceSend -> force send even for incoming packets
  * @return STATUS_SUCCESS on success
  *
  */
