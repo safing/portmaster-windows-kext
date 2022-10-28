@@ -163,7 +163,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
             return;
         case PORTMASTER_VERDICT_BLOCK:
             INFO("PORTMASTER_VERDICT_BLOCK: %s", printPacketInfo(packetInfo));
-            // sendBlockPacket(packetInfo, packet, packetLength);
+            sendBlockPacket(packetInfo, packet, packetLength);
             portmasterFree(packet);
             return;
         case PORTMASTER_VERDICT_ACCEPT:
@@ -192,7 +192,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
         calcIPv6Checksum(packet, packetLength, true);
     }
 
-    NTSTATUS status = injectPacket(packetInfo, packetInfo->direction, packet, packetLength, false); // this call will free the packet even if the inject fails
+    NTSTATUS status = injectPacket(packetInfo, packetInfo->direction, packet, packetLength); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
         ERR("respondWithVerdict -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
@@ -354,7 +354,7 @@ FWP_ACTION_TYPE classifySingle(
 
         case PORTMASTER_VERDICT_BLOCK:
             INFO("PORTMASTER_VERDICT_BLOCK: %s", printPacketInfo(packetInfo));
-            //sendBlockPacketFromCallout(packetInfo, nb, ipHeaderSize);
+            sendBlockPacketFromCallout(packetInfo, nb, ipHeaderSize);
             return FWP_ACTION_BLOCK;
 
         case PORTMASTER_VERDICT_ACCEPT:
@@ -548,23 +548,40 @@ void classifyMultiple(
     // First, run checks and get data that applies to all packets.
 
     // sanity check
-    if (!classifyOut) {
+    if (classifyOut == NULL) {
         ERR("Missing classifyOut");
         return;
     }
-    if (!packetInfo || !verdictCache || !verdictCacheLock || !inMetaValues || !layerData) {
+    if (packetInfo == NULL || verdictCache == NULL || verdictCacheLock == NULL || inMetaValues == NULL || layerData == NULL) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
     }
 
     // Get injection handle.
-    HANDLE handle = getInjectionHandleForPacket(packetInfo, false);
+    HANDLE handle = getInjectionHandleForPacket(packetInfo);
 
     // Interpret layer data as netbuffer list and check if it's a looping packet.
     // Packets created/injected by us will loop back to us.
     PNET_BUFFER_LIST nbl = (PNET_BUFFER_LIST) layerData;
     FWPS_PACKET_INJECTION_STATE injectionState = FwpsQueryPacketInjectionState(handle, nbl, NULL);
+    if (injectionState == FWPS_PACKET_INJECTED_BY_SELF ||
+        injectionState == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
+        classifyOut->actionType = FWP_ACTION_PERMIT;
+
+        // We must always hard permit here, as the Windows Firewall sometimes
+        // blocks our injected packets.
+        // The follow-up (directly accepted) packets are not blocked.
+        // Note: Hard Permit is now the default and is set immediately in the
+        // callout.
+
+        INFO("packet was in loop, injectionState= %d ", injectionState);
+        return;
+    }
+
+    // Get injection handle.
+    handle = getBlockedPacketInjectHandle(packetInfo);
+    injectionState = FwpsQueryPacketInjectionState(handle, nbl, NULL);
     if (injectionState == FWPS_PACKET_INJECTED_BY_SELF ||
         injectionState == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
         classifyOut->actionType = FWP_ACTION_PERMIT;

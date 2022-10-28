@@ -40,7 +40,10 @@ void destroyInjectHandles();
  * @return inject handle
  *
  */
-HANDLE getInjectionHandleForPacket(PortmasterPacketInfo *packetInfo, bool forceOutbound);
+HANDLE getInjectionHandleForPacket(PortmasterPacketInfo *packetInfo);
+HANDLE getBlockedPacketInjectHandle(PortmasterPacketInfo *packetInfo);
+
+NTSTATUS injectPacketWithHandle(HANDLE handle, PortmasterPacketInfo *packetInfo, UINT8 direction, void *packet, size_t packetLength);
 
 /**
  * @brief Injects a packet in the network loop
@@ -53,7 +56,7 @@ HANDLE getInjectionHandleForPacket(PortmasterPacketInfo *packetInfo, bool forceO
  * @return STATUS_SUCCESS on success
  *
  */
-NTSTATUS injectPacket(PortmasterPacketInfo *packetInfo, UINT8 direction, void *packet, size_t packetLength, bool forceSend);
+NTSTATUS injectPacket(PortmasterPacketInfo *packetInfo, UINT8 direction, void *packet, size_t packetLength);
 
 /**
  * @brief Copies a packet from net buffer and injects it
