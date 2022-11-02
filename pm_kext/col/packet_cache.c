@@ -22,6 +22,21 @@
 #include "pm_utils.h"
 #include "pm_debug.h"
 
+typedef struct PacketCacheItem {
+    UINT32 packetID;
+    PortmasterPacketInfo *packetInfo;
+    void *packet;
+    size_t packetLength;
+} PacketCacheItem;
+
+#undef PacketCache // previously defined as void
+typedef struct  {
+    PacketCacheItem *packets;
+    UINT32 maxSize;
+    UINT32 nextPacketID;
+    KSPIN_LOCK lock;
+} PacketCache;
+
 /**
  * @brief Retrieves the packet index located in the array
  *
@@ -31,7 +46,7 @@
  *
  */
 static UINT32 getIndexFromPacketID(PacketCache *packetCache, UINT32 packetID) {
-    return (packetID - 1) % packetCache->maxSize; // -1 because packet id starts from 1
+    return packetID % packetCache->maxSize;
 }
 
 /**
@@ -42,26 +57,28 @@ static UINT32 getIndexFromPacketID(PacketCache *packetCache, UINT32 packetID) {
  * @return error code
  *
  */
-int createPacketCache(uint32_t maxSize, PacketCache **packetCache) {
+int packetCacheCreate(uint32_t maxSize, PacketCache **packetCache) {
     if (maxSize == 0) {
-        ERR("createPacketCache PacketCache maxSize was 0");
+        ERR("packetCacheCreate PacketCache maxSize was 0");
         return 1;
     }
-    INFO("createPacketCache with size %d", maxSize);
+    INFO("packetCacheCreate with size %d", maxSize);
 
-    PacketCache *newPacketCache = _ALLOC(sizeof(PacketCache), 1);
+    PacketCache *newPacketCache = portmasterMalloc(sizeof(PacketCache), false);
     if (newPacketCache == NULL) {
         return 1;
     }
 
-    newPacketCache->packets = _ALLOC(sizeof(PacketCacheItem), maxSize);
+    newPacketCache->packets = portmasterMalloc(sizeof(PacketCacheItem) * maxSize, false);
     if(newPacketCache->packets == NULL) {
-        _FREE(newPacketCache);
+        portmasterFree(newPacketCache);
         return 1;
     }
 
     newPacketCache->nextPacketID = 1;
     newPacketCache->maxSize = maxSize;
+
+    KeInitializeSpinLock(&newPacketCache->lock);
 
     *packetCache = newPacketCache;
     return 0;
@@ -74,10 +91,13 @@ int createPacketCache(uint32_t maxSize, PacketCache **packetCache) {
  * @return error code
  *
  */
-int teardownPacketCache(PacketCache *packetCache, void(*freeData)(PortmasterPacketInfo*, void*)) {
+int packetCacheTeardown(PacketCache *packetCache, void(*freeData)(PortmasterPacketInfo*, void*)) {
     if(packetCache == NULL) {
         return 0;
     }
+
+    KLOCK_QUEUE_HANDLE lockHandle = {0};
+    KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
 
     for(UINT32 i = 0; i < packetCache->maxSize; i++) {
         PacketCacheItem *item = &packetCache->packets[i];
@@ -86,8 +106,10 @@ int teardownPacketCache(PacketCache *packetCache, void(*freeData)(PortmasterPack
         }
     }
     
-    _FREE(packetCache->packets);
-    _FREE(packetCache);
+    portmasterFree(packetCache->packets);
+    portmasterFree(packetCache);
+
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
     return 0;
 }
 
@@ -100,12 +122,15 @@ int teardownPacketCache(PacketCache *packetCache, void(*freeData)(PortmasterPack
  * @return new packet ID
  *
  */
-uint32_t registerPacket(PacketCache* packetCache, PortmasterPacketInfo *packetInfo, void* packet, size_t packetLength, PortmasterPacketInfo **oldPacketInfo, void **oldPacket) {
-    DEBUG("registerPacket called");
+uint32_t packetCacheRegister(PacketCache* packetCache, PortmasterPacketInfo *packetInfo, void* packet, size_t packetLength, PortmasterPacketInfo **oldPacketInfo, void **oldPacket) {
+    DEBUG("packetCacheRegister called");
     if(packetCache == NULL || packetInfo == NULL || packet == NULL) {
-        ERR("registerPacket - invalid params");
+        ERR("packetCacheRegister - invalid params");
         return 0;
     }
+
+    KLOCK_QUEUE_HANDLE lockHandle = {0};
+    KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
 
     UINT32 packetIndex = getIndexFromPacketID(packetCache, packetCache->nextPacketID);
     PacketCacheItem *newItem = &packetCache->packets[packetIndex];
@@ -127,6 +152,7 @@ uint32_t registerPacket(PacketCache* packetCache, PortmasterPacketInfo *packetIn
         packetCache->nextPacketID = 1;
     }
 
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
     return newItem->packetID;
 }
 
@@ -163,18 +189,24 @@ static PacketCacheItem* getPacketFromID(PacketCache *packetCache, UINT32 packetI
  * @return error code
  *
  */
-int retrievePacket(PacketCache *packetCache, UINT32 packetID, PortmasterPacketInfo **packetInfo, void **packet, size_t *packetLength) {
+int packetCacheRetrieve(PacketCache *packetCache, UINT32 packetID, PortmasterPacketInfo **packetInfo, void **packet, size_t *packetLength) {
     DEBUG("retrieve_packet called");
-    
+
+    KLOCK_QUEUE_HANDLE lockHandle = {0};
+    KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
     PacketCacheItem *item = getPacketFromID(packetCache, packetID);
+    
+    if(item != NULL) {
+        *packetInfo = item->packetInfo;
+        *packet = item->packet;
+        *packetLength = item->packetLength;
+        memset(item, 0, sizeof(PacketCacheItem));
+    }
+
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
     if(item == NULL) {
         return 1;
     }
-
-    *packetInfo = item->packetInfo;
-    *packet = item->packet;
-    *packetLength = item->packetLength;
-    memset(item, 0, sizeof(PacketCacheItem));
     return 0;
 }
 
@@ -187,15 +219,21 @@ int retrievePacket(PacketCache *packetCache, UINT32 packetID, PortmasterPacketIn
  * @return error code
  *
  */
-int getPacket(PacketCache *packetCache, uint32_t packetID, void **packet, size_t *packetLength) {
-    DEBUG("getPacket called");
+int packetCacheGet(PacketCache *packetCache, uint32_t packetID, void **packet, size_t *packetLength) {
+    DEBUG("packetCacheGet called");
+
+    KLOCK_QUEUE_HANDLE lockHandle = {0};
+    KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
 
     PacketCacheItem *item = getPacketFromID(packetCache, packetID);
+    if(item != NULL) {
+        *packet = item->packet;
+        *packetLength = item->packetLength;
+    }
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
+
     if(item == NULL) {
         return 1;
     }
-
-    *packet = item->packet;
-    *packetLength = item->packetLength;
     return 0;
 }

@@ -389,14 +389,12 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
         case IOCTL_GET_PAYLOAD: {
             void *packet = NULL;
             size_t packetLength = 0;
-            KLOCK_QUEUE_HANDLE lockHandle;
             // 0. Make Userland supplied Buffer useable
             PortmasterPayload *payload = (PortmasterPayload*) pBuf;
 
             INFO("IOCTL_GET_PAYLOAD for id=%u, expect %u Bytes", payload->id, payload->len);
             // 1. Locate packet in packet cache
-            KeAcquireInStackQueuedSpinLock(&globalPacketCacheLock, &lockHandle);
-            NTSTATUS rc = (NTSTATUS)getPacket(globalPacketCache, payload->id, &packet, &packetLength);
+            NTSTATUS rc = (NTSTATUS)packetCacheGet(getPacketCache(), payload->id, &packet, &packetLength);
 
             // 2. Sanity Checks
             if (rc != 0) {
@@ -437,7 +435,6 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
             Irp->IoStatus.Information = packetLength;
 
 IOCTL_GET_PAYLOAD_EXIT:
-            KeReleaseInStackQueuedSpinLock(&lockHandle);
             //Irp->IoStatus.Information is the ONLY way to transfer status information to userland
             //We need to share it with "Bytes Transferred".  That is why we ignore the (unsigned) type
             //of Irp->IoStatus.Information and use the first (sign) Bit to distinguish between

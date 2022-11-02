@@ -29,12 +29,13 @@ static NTSTATUS sendICMPBlockedPacket(PortmasterPacketInfo* packetInfo, void* or
 
 static void freeAfterInject(void *context, NET_BUFFER_LIST *nbl, BOOLEAN dispatchLevel);
 
-// We need separate handles for In/Out for the redirect to work properly. See the use of FWPS_PACKET_INJECTED_BY_SELF
+// We need separate handles for In/Out for the redirect to work properly. See the use of FWPS_PACKET_INJECTED_BY_SELF.
 static HANDLE injectV4InHandle = NULL;
 static HANDLE injectV4OutHandle = NULL;
 static HANDLE injectV6InHandle = NULL;
 static HANDLE injectV6OutHandle = NULL;
 
+// exclusive injection handlers for generated ICMP and TCP packets for blocked connections.
 static HANDLE injectV4Blocked = NULL;
 static HANDLE injectV6Blocked = NULL;
 
@@ -123,6 +124,13 @@ void destroyInjectHandles() {
     }
 }
 
+/**
+ * @brief returns the proper injection handler for the packet. 
+ * Used for DNS or SPN redirected packets, we need separate handlers for inbound and outbound, for proper detection in the callout.
+ * See the use of FWPS_PACKET_INJECTED_BY_SELF.
+ * @par    packetInfo = info for the packet
+ * @return injection handler
+ */
 HANDLE getInjectionHandleForPacket(PortmasterPacketInfo *packetInfo) {
     bool isLoopback = isPacketLoopback(packetInfo);
     if (packetInfo->ipV6 == 0) {
@@ -140,6 +148,12 @@ HANDLE getInjectionHandleForPacket(PortmasterPacketInfo *packetInfo) {
     }
 }
 
+/**
+ * @brief returns the proper injection handler for the packet. 
+ * Used for injecting packets for blocked connections, or checking if packet was injected for blocking a connection.
+ * @par    packetInfo = info for the packet
+ * @return injection handler
+ */
 HANDLE getBlockedPacketInjectHandle(PortmasterPacketInfo *packetInfo) {
     if (packetInfo->ipV6 == 0) {
         return injectV4Blocked;
@@ -435,7 +449,7 @@ static NTSTATUS sendICMPBlockedPacket(PortmasterPacketInfo* packetInfo, void *or
      // Reverse direction and inject packet
     UINT8 injectDirection = packetInfo->direction == DIRECTION_INBOUND ? DIRECTION_OUTBOUND : DIRECTION_INBOUND;
     if(useLocalHost) {
-        packetLength = DIRECTION_OUTBOUND;
+        injectDirection = DIRECTION_OUTBOUND;
     }
     NTSTATUS status = injectPacketWithHandle(handle, packetInfo, injectDirection, icmpPacket, packetLength);
     if (!NT_SUCCESS(status)) {
