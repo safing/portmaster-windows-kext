@@ -223,7 +223,7 @@ int verdictCacheAdd(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo
     HASH_FIND(hh, verdictCache->map, &key, sizeof(VerdictCacheKey), newItem);
     if(newItem != NULL) {
         // already in
-        INFO("addVerdict packet was already in");
+        INFO("addVerdict packet was already in the verdict cache");
         rc = 3;
     }
 
@@ -235,7 +235,6 @@ int verdictCacheAdd(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo
             VerdictCacheItem *item = getOldestAccessTimeItem(verdictCache);
             if(item == NULL) {
                 ERR("addVerdict failed to find free element");
-                KeReleaseInStackQueuedSpinLock(&lockHandle);
                 rc = 2;
             } else {
                 *removedPacketInfo = item->packetInfo;
