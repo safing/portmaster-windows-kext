@@ -105,7 +105,6 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     size_t packetLength = 0;
     int rc = packetCacheRetrieve(packetCache, id, &packetInfo, &packet, &packetLength);
    
-
     if (rc != 0) {
         // packet id was not in packet cache
         INFO("received verdict response for unknown packet id: %u", id);
@@ -142,7 +141,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     //Handle Packet according to Verdict
     switch (verdict) {
         case PORTMASTER_VERDICT_DROP:
-            INFO("PORTMASTER_VERDICT_DROP: %s", printPacketInfo(packetInfo));
+            // INFO("PORTMASTER_VERDICT_DROP: %s", printPacketInfo(packetInfo));
             portmasterFree(packet);
             return;
         case PORTMASTER_VERDICT_BLOCK:
@@ -151,7 +150,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
             portmasterFree(packet);
             return;
         case PORTMASTER_VERDICT_ACCEPT:
-            DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
+            // DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
             break; // ACCEPT
         case PORTMASTER_VERDICT_REDIR_DNS:
             INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", printPacketInfo(packetInfo));
@@ -193,6 +192,14 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
 
 PacketCache* getPacketCache() {
     return packetCache;
+}
+
+int updateVerdict(VerdictUpdateInfo *info) {
+    if(info->ipV6) {
+        return verdictCacheUpdate(verdictCacheV6, info);
+    } else {
+        return verdictCacheUpdate(verdictCacheV4, info);
+    }
 }
 
 /******************************************************************
@@ -321,7 +328,7 @@ FWP_ACTION_TYPE classifySingle(
             return FWP_ACTION_BLOCK;
 
         case PORTMASTER_VERDICT_ACCEPT:
-            INFO("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
+            // INFO("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
             return FWP_ACTION_PERMIT;
 
         case PORTMASTER_VERDICT_REDIR_DNS:

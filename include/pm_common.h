@@ -40,7 +40,6 @@ typedef struct {
     UINT32 packetSize;
 } PortmasterPacketInfo;
 
-
 /*
  * Packet Info Flags
  */
@@ -172,9 +171,18 @@ typedef struct {
  */
 typedef struct {
     UINT32 id;
-    UINT32 len;         //preset with maxlen of payload from caller -> set with acutal len of payload from receiver
+    UINT32 len;         // preset with maxlen of payload from caller -> set with acutal len of payload from receiver
 } PortmasterPayload;
 
+typedef struct {
+    UINT32 localIP[4];                  // Source Address, only srcIP[0] if IPv4
+    UINT32 remoteIP[4];                 // Destination Address
+    UINT16 localPort;                   // Source Port
+    UINT16 remotePort;                  // Destination port
+    UINT8 ipV6;                         // True: IPv6, False: IPv4
+    UINT8 protocol;                     // Protocol (UDP, TCP, ...)
+    verdict_t verdict;                  // New verdict
+} VerdictUpdateInfo;
 
 /*
  * Currently unused returncodes
@@ -196,11 +204,11 @@ typedef struct {
 
 #define SIOCTL_TYPE 40000
 
-#define IOCTL_HELLO \
-    CTL_CODE(SIOCTL_TYPE, 0x800, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)  //FILE_ANY_ACCESS
+#define IOCTL_VERSION \
+    CTL_CODE(SIOCTL_TYPE, 0x800, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
 
 #define IOCTL_RECV_VERDICT_REQ_POLL \
-    CTL_CODE(SIOCTL_TYPE, 0x801, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
+    CTL_CODE(SIOCTL_TYPE, 0x801, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)  // Not used
 
 #define IOCTL_RECV_VERDICT_REQ \
     CTL_CODE(SIOCTL_TYPE, 0x802, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
@@ -213,6 +221,9 @@ typedef struct {
 
 #define IOCTL_CLEAR_CACHE \
     CTL_CODE(SIOCTL_TYPE, 0x805, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
+
+#define IOCTL_UPDATE_VERDICT \
+    CTL_CODE(SIOCTL_TYPE, 0x806, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
 
 /****************************************************************************/
 /* MISC                                                       */
