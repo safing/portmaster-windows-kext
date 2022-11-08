@@ -13,7 +13,6 @@
 
 #include "pm_kernel.h"
 #include "pm_callouts.h"
-#include "packet_cache.h"
 #include "pm_netbuffer.h"
 #define LOGGER_NAME "pm_callouts"
 #include "pm_debug.h"
@@ -26,36 +25,29 @@
  * Global (static) data structures
  ******************************************************************/
 static VerdictCache *verdictCacheV4;
-static KSPIN_LOCK verdictCacheV4Lock;
-
 static VerdictCache *verdictCacheV6;
-static KSPIN_LOCK verdictCacheV6Lock;
 
-PacketCache *globalPacketCache = NULL;    //Not static anymore, because it is also used in pm_kernel.c
-KSPIN_LOCK globalPacketCacheLock = {0};
+static PacketCache *packetCache = NULL;
 
 /******************************************************************
  * Helper Functions
  ******************************************************************/
 
 NTSTATUS initCalloutStructure() {
-    int rc = createVerdictCache(PM_VERDICT_CACHE_SIZE, &verdictCacheV4);
+    int rc = verdictCacheCreate(PM_VERDICT_CACHE_SIZE, &verdictCacheV4);
     if (rc != 0) {
         return STATUS_INTERNAL_ERROR;
     }
-    KeInitializeSpinLock(&verdictCacheV4Lock);
 
-    rc = createVerdictCache(PM_VERDICT_CACHE_SIZE, &verdictCacheV6);
+    rc = verdictCacheCreate(PM_VERDICT_CACHE_SIZE, &verdictCacheV6);
     if (rc != 0) {
         return STATUS_INTERNAL_ERROR;
     }
-    KeInitializeSpinLock(&verdictCacheV6Lock);
 
-    rc = createPacketCache(PM_PACKET_CACHE_SIZE, &globalPacketCache);
+    rc = packetCacheCreate(PM_PACKET_CACHE_SIZE, &packetCache);
     if (rc != 0) {
         return STATUS_INTERNAL_ERROR;
     }
-    KeInitializeSpinLock(&globalPacketCacheLock);
 
     initializeInjectHandles();
 
@@ -106,14 +98,13 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     }
 
     INFO("Trying to retrieve packet");
-    KLOCK_QUEUE_HANDLE lockHandle = {0};
-    KeAcquireInStackQueuedSpinLock(&globalPacketCacheLock, &lockHandle);
+
 
     PortmasterPacketInfo *packetInfo = NULL;
     void *packet = NULL;
     size_t packetLength = 0;
-    int rc = retrievePacket(globalPacketCache, id, &packetInfo, &packet, &packetLength);
-    KeReleaseInStackQueuedSpinLock(&lockHandle);
+    int rc = packetCacheRetrieve(packetCache, id, &packetInfo, &packet, &packetLength);
+   
 
     if (rc != 0) {
         // packet id was not in packet cache
@@ -125,28 +116,18 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     //Store permanent verdicts in verdictCache
     if (!temporary) {
         VerdictCache *verdictCache = verdictCacheV4;
-        KSPIN_LOCK *verdictCacheLock = &verdictCacheV4Lock;
-        PortmasterPacketInfo *packetInfoToFree = NULL;
 
         // Switch to IPv6 cache and lock if needed.
         if (packetInfo->ipV6) {
             verdictCache = verdictCacheV6;
-            verdictCacheLock = &verdictCacheV6Lock;
         }
 
-        // Acquire exclusive lock as we are changing the verdict cache.
-        KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lockHandle);
-
         // Add to verdict cache
-        rc = addVerdict(verdictCache, packetInfo, verdict);
-
-        // Free after adding.
-        int cleanRC = cleanVerdictCache(verdictCache, &packetInfoToFree);
-
-        KeReleaseInStackQueuedSpinLock(&lockHandle);
+        PortmasterPacketInfo *packetInfoToFree = NULL;
+        rc = verdictCacheAdd(verdictCache, packetInfo, verdict, &packetInfoToFree);
 
         // Free returned packet info.
-        if (cleanRC == 0) {
+        if (packetInfoToFree != NULL) {
             portmasterFree(packetInfoToFree);
         }
 
@@ -195,7 +176,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
         calcIPv6Checksum(packet, packetLength, true);
     }
 
-    NTSTATUS status = injectPacket(packetInfo, packetInfo->direction, packet, packetLength, false); // this call will free the packet even if the inject fails
+    NTSTATUS status = injectPacket(packetInfo, packetInfo->direction, packet, packetLength); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
         ERR("respondWithVerdict -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
@@ -210,13 +191,16 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     INFO("Good Bye respondWithVerdict");
 }
 
+PacketCache* getPacketCache() {
+    return packetCache;
+}
+
 /******************************************************************
  * Classify Functions
  ******************************************************************/
 FWP_ACTION_TYPE classifySingle(
     PortmasterPacketInfo* packetInfo,
     VerdictCache *verdictCache,
-    KSPIN_LOCK* verdictCacheLock,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     PNET_BUFFER nb,
     UINT32 ipHeaderSize
@@ -320,35 +304,11 @@ FWP_ACTION_TYPE classifySingle(
     }
 
     // Set default verdict.
-    verdict_t verdict = PORTMASTER_VERDICT_GET;
-
-    // Lock to check verdict cache.
-    KLOCK_QUEUE_HANDLE lockHandleVC = {0};
-    KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lockHandleVC);
 
     // First check if the packet is a DNAT response.
     PortmasterPacketInfo* redirInfo = NULL;
-    if (packetInfo->direction == DIRECTION_INBOUND &&
-        (packetInfo->remotePort == PORT_PM_SPN_ENTRY || packetInfo->remotePort == PORT_DNS)) {
-        verdict = checkReverseRedirect(verdictCache, packetInfo, &redirInfo);
+    verdict_t verdict = verdictCacheGet(verdictCache, packetInfo, &redirInfo);
 
-        // Verdicts returned by check_reverse_redir must only be
-        // PORTMASTER_VERDICT_REDIR_DNS or PORTMASTER_VERDICT_REDIR_TUNNEL.
-        if (verdict != PORTMASTER_VERDICT_REDIR_DNS && verdict != PORTMASTER_VERDICT_REDIR_TUNNEL) {
-            verdict = PORTMASTER_VERDICT_GET;
-        }
-    }
-
-    // Check verdict normally if we did not detect a packet that should be reverse DNAT-ed.
-    if (verdict == PORTMASTER_VERDICT_GET) {
-        verdict = checkVerdict(verdictCache, packetInfo);
-
-        // If packet should be DNAT-ed set redirInfo to packetInfo.
-        if (verdict == PORTMASTER_VERDICT_REDIR_DNS || verdict == PORTMASTER_VERDICT_REDIR_TUNNEL) {
-            redirInfo = packetInfo;
-        }
-    }
-    KeReleaseInStackQueuedSpinLock(&lockHandleVC);
 
     switch (verdict) {
         case PORTMASTER_VERDICT_DROP:
@@ -442,27 +402,15 @@ FWP_ACTION_TYPE classifySingle(
         RtlCopyMemory(copiedPacketInfo, packetInfo, sizeof(PortmasterPacketInfo));
         dentry->packet = copiedPacketInfo;
 
-        KLOCK_QUEUE_HANDLE lockHandlePC;
-
         // If fast-tracked, add verdict to cache immediately.
         if (fastTracked) {
-            PortmasterPacketInfo *packet_info_to_free;
-            int cleanRC;
-
-            // Acquire exclusive lock as we are changing the verdict cache.
-            KeAcquireInStackQueuedSpinLock(verdictCacheLock, &lockHandleVC);
-
             // Add to verdict cache
-            rc = addVerdict(verdictCache, copiedPacketInfo, PORTMASTER_VERDICT_ACCEPT);
-
-            // Free after adding.
-            cleanRC = cleanVerdictCache(verdictCache, &packet_info_to_free);
-
-            KeReleaseInStackQueuedSpinLock(&lockHandleVC);
+            PortmasterPacketInfo *packetInfoToFree = NULL;
+            rc = verdictCacheAdd(verdictCache, copiedPacketInfo, PORTMASTER_VERDICT_ACCEPT, &packetInfoToFree);
 
             // Free returned packet info.
-            if (cleanRC == 0) {
-                portmasterFree(packet_info_to_free);
+            if (packetInfoToFree != NULL) {
+                portmasterFree(packetInfoToFree);
             }
 
             // In case of failure, abort and free copied data.
@@ -502,29 +450,22 @@ FWP_ACTION_TYPE classifySingle(
             }
 
             // Register packet.
-            DEBUG("trying to register packet");
-            KeAcquireInStackQueuedSpinLock(&globalPacketCacheLock, &lockHandlePC);
-            // Explicit lock is required, because two or more callouts can run simultaneously.
-            copiedPacketInfo->id = registerPacket(globalPacketCache, copiedPacketInfo, data, dataLength);
-            KeReleaseInStackQueuedSpinLock(&lockHandlePC);
-            INFO("registered packet with ID %u: %s", copiedPacketInfo->id, printIpv4Packet(data));
-        }
-
-        // send to queue
-        /* queuedEntries = */ KeInsertQueue(globalIOQueue, &(dentry->entry));
-
-        // attempt to clean packet cache
-        {
             PortmasterPacketInfo *packetInfoToFree = NULL;
             void* dataToFree = NULL;
-            KeAcquireInStackQueuedSpinLock(&globalPacketCacheLock, &lockHandlePC);
-            rc = cleanPacketCache(globalPacketCache, &packetInfoToFree, &dataToFree);
-            KeReleaseInStackQueuedSpinLock(&lockHandlePC);
-            if (rc == 0) {
+
+            DEBUG("trying to register packet");
+            // Explicit lock is required, because two or more callouts can run simultaneously.
+            copiedPacketInfo->id = packetCacheRegister(packetCache, copiedPacketInfo, data, dataLength, &packetInfoToFree, &dataToFree);
+            INFO("registered packet with ID %u: %s", copiedPacketInfo->id, printIpv4Packet(data));
+
+            if (packetInfoToFree != NULL && dataToFree != NULL) {
                 portmasterFree(packetInfoToFree);
                 portmasterFree(dataToFree);
             }
         }
+
+        // send to queue
+        /* queuedEntries = */ KeInsertQueue(globalIOQueue, &(dentry->entry));
 
         if (fastTracked) {
             return FWP_ACTION_PERMIT;
@@ -535,8 +476,7 @@ FWP_ACTION_TYPE classifySingle(
 
 void classifyMultiple(
     PortmasterPacketInfo* packetInfo,
-    VerdictCache* verdictCache,
-    KSPIN_LOCK* verdictCacheLock,
+    VerdictCache *verdictCache,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
     FWPS_CLASSIFY_OUT* classifyOut
@@ -561,11 +501,11 @@ void classifyMultiple(
     // First, run checks and get data that applies to all packets.
 
     // sanity check
-    if (!classifyOut) {
+    if (classifyOut == NULL) {
         ERR("Missing classifyOut");
         return;
     }
-    if (!packetInfo || !verdictCache || !verdictCacheLock || !inMetaValues || !layerData) {
+    if (packetInfo == NULL || verdictCache == NULL|| inMetaValues == NULL || layerData == NULL) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
@@ -589,6 +529,23 @@ void classifyMultiple(
         // callout.
 
         INFO("packet was in loop, injectionState= %d ", injectionState);
+        return;
+    }
+
+    // Get block injection handle.
+    handle = getBlockedPacketInjectHandle(packetInfo);
+    injectionState = FwpsQueryPacketInjectionState(handle, nbl, NULL);
+    if (injectionState == FWPS_PACKET_INJECTED_BY_SELF ||
+        injectionState == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
+        classifyOut->actionType = FWP_ACTION_PERMIT;
+
+        // We must always hard permit here, as the Windows Firewall sometimes
+        // blocks our injected packets.
+        // The follow-up (directly accepted) packets are not blocked.
+        // Note: Hard Permit is now the default and is set immediately in the
+        // callout.
+
+        INFO("blocked packet was in loop, injectionState= %d ", injectionState);
         return;
     }
 
@@ -664,7 +621,7 @@ void classifyMultiple(
             packetInfo->processID = 0;
 
             // Classify net buffer.
-            action = classifySingle(packetInfo, verdictCache, verdictCacheLock, inMetaValues, nb, ipHeaderSize);
+            action = classifySingle(packetInfo, verdictCache, inMetaValues, nb, ipHeaderSize);
             switch (action) {
             case FWP_ACTION_PERMIT:
                 // Permit packet.
@@ -784,7 +741,7 @@ void classifyInboundIPv4(
         inboundV4PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
 
-    classifyMultiple(&inboundV4PacketInfo, verdictCacheV4, &verdictCacheV4Lock, inMetaValues, layerData, classifyOut);
+    classifyMultiple(&inboundV4PacketInfo, verdictCacheV4, inMetaValues, layerData, classifyOut);
 }
 
 void classifyOutboundIPv4(
@@ -833,7 +790,7 @@ void classifyOutboundIPv4(
         outboundV4PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
 
-    classifyMultiple(&outboundV4PacketInfo, verdictCacheV4, &verdictCacheV4Lock, inMetaValues, layerData, classifyOut);
+    classifyMultiple(&outboundV4PacketInfo, verdictCacheV4, inMetaValues, layerData, classifyOut);
 }
 
 void classifyInboundIPv6(
@@ -894,7 +851,7 @@ void classifyInboundIPv6(
     } else {
         inboundV6PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
-    classifyMultiple(&inboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
+    classifyMultiple(&inboundV6PacketInfo, verdictCacheV6, inMetaValues, layerData, classifyOut);
 }
 
 void classifyOutboundIPv6(
@@ -957,7 +914,7 @@ void classifyOutboundIPv6(
     } else {
         outboundV6PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
-    classifyMultiple(&outboundV6PacketInfo, verdictCacheV6, &verdictCacheV6Lock, inMetaValues, layerData, classifyOut);
+    classifyMultiple(&outboundV6PacketInfo, verdictCacheV6, inMetaValues, layerData, classifyOut);
 }
 
 // Used for freeing the packet info memory when clearing the packet cache
@@ -968,19 +925,32 @@ static void freePacketInfo(PortmasterPacketInfo *info, verdict_t verdict) {
     }
 }
 
+static void freePacketInfoAndData(PortmasterPacketInfo *info, void *data) {
+    if(info != NULL && data != NULL) {
+        portmasterFree(info);
+        portmasterFree(data);
+    }
+}
+
 void clearCache() {
     INFO("Cleaning all verdict cache");
-    KLOCK_QUEUE_HANDLE lockHandle = {0};
 
     // Clear IPv4 verdict cache
-    KeAcquireInStackQueuedSpinLock(&verdictCacheV4Lock, &lockHandle);
     // freePacketInfo will free the packet info stored in every item of the cache
-    clearAllEntriesFromVerdictCache(verdictCacheV4, freePacketInfo);
-    KeReleaseInStackQueuedSpinLock(&lockHandle);
+    verdictCacheClear(verdictCacheV4, freePacketInfo);
 
     // Clear IPv6 verdict cache
-    KeAcquireInStackQueuedSpinLock(&verdictCacheV6Lock, &lockHandle);
     // freePacketInfo will free the packet info stored in every item of the cache
-    clearAllEntriesFromVerdictCache(verdictCacheV6, freePacketInfo);
-    KeReleaseInStackQueuedSpinLock(&lockHandle);
+    verdictCacheClear(verdictCacheV6, freePacketInfo);
+}
+
+void teardownCache() {
+    verdictCacheTeardown(verdictCacheV4, freePacketInfo);
+    verdictCacheTeardown(verdictCacheV6, freePacketInfo);
+
+    verdictCacheV4 = NULL;
+    verdictCacheV6 = NULL;
+
+    packetCacheTeardown(packetCache, freePacketInfoAndData);
+    packetCache = NULL;
 }

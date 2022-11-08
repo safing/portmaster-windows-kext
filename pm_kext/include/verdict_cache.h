@@ -16,22 +16,17 @@
 #define VERDICT_CACHE_H
 
 #include "pm_common.h"
+#include "pm_utils.h"
 
+#ifndef __LINUX_ENV__
+#include <intsafe.h>
+typedef UINT8  uint8_t;
+typedef UINT16 uint16_t;
+typedef UINT32 uint32_t;
+typedef UINT64 uint64_t;
+#endif
 
-typedef struct VerdictCacheItem {
-    struct VerdictCacheItem *prev;
-    struct VerdictCacheItem *next;
-
-    PortmasterPacketInfo *packetInfo;
-    verdict_t verdict;
-} VerdictCacheItem;
-
-typedef struct {
-    UINT32 size;
-    UINT32 maxSize;
-    VerdictCacheItem *head;
-    VerdictCacheItem *tail;
-} VerdictCache;
+#define VerdictCache void
 
 /**
  * @brief Initializes the verdict cache
@@ -41,17 +36,7 @@ typedef struct {
  * @return error code
  *
  */
-int createVerdictCache(UINT32 maxSize, VerdictCache **verdict_cache);
-
-/**
- * @brief Cleans the verdict cache
- *
- * @par    verdictCache = verdict_cache to use
- * @par    packetInfo   = returns portmasterPacketInfo to free
- * @return error code
- *
- */
-int cleanVerdictCache(VerdictCache *verdictCache, PortmasterPacketInfo **packetInfo);
+int verdictCacheCreate(UINT32 maxSize, VerdictCache **verdict_cache);
 
 /**
  * @brief Remove all items from verdict cache
@@ -60,7 +45,7 @@ int cleanVerdictCache(VerdictCache *verdictCache, PortmasterPacketInfo **packetI
  * @par    freeData = callback function that is executed for each item before delete were the data of the item can be deleted
  *
  */
-void clearAllEntriesFromVerdictCache(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t));
+void verdictCacheClear(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t));
 
 /**
  * @brief Tears down the verdict cache
@@ -69,7 +54,7 @@ void clearAllEntriesFromVerdictCache(VerdictCache *verdictCache, void(*freeData)
  * @return error code
  *
  */
-int teardownVerdictCache(VerdictCache *verdictCache);
+int verdictCacheTeardown(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t));
 
 /**
  * @brief Adds verdict to cache
@@ -80,45 +65,17 @@ int teardownVerdictCache(VerdictCache *verdictCache);
  * @return error code
  *
  */
-int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, verdict_t verdict);
+int verdictCacheAdd(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, verdict_t verdict, PortmasterPacketInfo **removedPacketInfo);
 
 /**
- * @brief Checks packet for verdict
- *
- * @par    verdictCache = verdict cache to use
- * @par    packetInfo   = pointer to packet info
- * @return verdict
- *
- */
-verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo);
-
-/**
- * @brief Checks packet for reverse redirection
+ * @brief returns the verdict of a packet if inside the cache, with redirect info if available
  *
  * @par    verdict_cache = verdict_cache to use
  * @par    packet_info   = pointer to packet_info
- * @par    redir_info   = double pointer to packet_info (return value)
+ * @par    redir_info    = double pointer to packet_info (return value)
  * @par    verdict       = pointer to verdict (return value)
  * @return error code
  *
  */
-verdict_t checkReverseRedirect(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, PortmasterPacketInfo **redirInfo);
-
-#endif
-
-#if 0
-#ifndef DYN_ALLOC_FREE
-#define DYN_ALLOC_FREE
-
-#ifdef BUILD_ENV_DRIVER
-
-
-#else
-
-#define _ALLOC(element_size, n_of_elements) calloc(element_size, n_of_elements)
-#define _FREE(p_element) free(p_element)
-
-#endif // DYN_ALLOC_FREE
-#endif // 0
-
+verdict_t verdictCacheGet(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, PortmasterPacketInfo **redirInfo);
 #endif // VERDICT_CACHE_H

@@ -15,6 +15,7 @@
 
 #include "pm_kernel.h"
 #include "verdict_cache.h"
+#include "packet_cache.h"
 
 NTSTATUS initCalloutStructure();
 void destroyCalloutStructure();
@@ -63,8 +64,10 @@ NTSTATUS genericNotify(
 NTSTATUS genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext);
 
 void respondWithVerdict(UINT32 id, verdict_t verdict);
+PacketCache* getPacketCache();
 
 
 void clearCache();
+void teardownCache();
 
 #endif // PM_CALLOUTS_H

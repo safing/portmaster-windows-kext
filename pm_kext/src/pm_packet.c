@@ -27,26 +27,65 @@ static void generateICMPBlockedPacketIPv6(void *originalPacket, size_t originalP
 static NTSTATUS sendTCPResetPacket(PortmasterPacketInfo* packetInfo, void* originalPacket, size_t originalPacketLength);
 static NTSTATUS sendICMPBlockedPacket(PortmasterPacketInfo* packetInfo, void* originalPacket, size_t originalPacketLength, bool useLocalHost);
 
-static void freeAfterInject(void *context, NET_BUFFER_LIST *nbl, BOOLEAN dispatch_level);
+static void freeAfterInject(void *context, NET_BUFFER_LIST *nbl, BOOLEAN dispatchLevel);
 
-static HANDLE injectV4Handle = NULL;
-static HANDLE injectV6Handle = NULL;
+// We need separate handles for In/Out for the redirect to work properly. See the use of FWPS_PACKET_INJECTED_BY_SELF.
+static HANDLE injectV4InHandle = NULL;
+static HANDLE injectV4OutHandle = NULL;
+static HANDLE injectV6InHandle = NULL;
+static HANDLE injectV6OutHandle = NULL;
+
+// exclusive injection handlers for generated ICMP and TCP packets for blocked connections.
+static HANDLE injectV4Blocked = NULL;
+static HANDLE injectV6Blocked = NULL;
 
 NTSTATUS initializeInjectHandles() {
-     // Create the packet injection handles.
+    // Create the packet injection handles.
     NTSTATUS status = FwpsInjectionHandleCreate(AF_INET,
             FWPS_INJECTION_TYPE_NETWORK,
-            &injectV4Handle);
+            &injectV4InHandle);
     if (!NT_SUCCESS(status)) {
         ERR("failed to create WFP in4 injection handle", status);
         return status;
     }
 
+    status = FwpsInjectionHandleCreate(AF_INET,
+            FWPS_INJECTION_TYPE_NETWORK,
+            &injectV4OutHandle);
+    if (!NT_SUCCESS(status)) {
+        ERR("failed to create WFP out4 injection handle", status);
+        return status;
+    }
+
     status = FwpsInjectionHandleCreate(AF_INET6,
             FWPS_INJECTION_TYPE_NETWORK,
-            &injectV6Handle);
+            &injectV6InHandle);
     if (!NT_SUCCESS(status)) {
         ERR("failed to create WFP in6 injection handle", status);
+        return status;
+    }
+
+    status = FwpsInjectionHandleCreate(AF_INET6,
+            FWPS_INJECTION_TYPE_NETWORK,
+            &injectV6OutHandle);
+    if (!NT_SUCCESS(status)) {
+        ERR("failed to create WFP out6 injection handle", status);
+        return status;
+    }
+
+    status = FwpsInjectionHandleCreate(AF_INET,
+            FWPS_INJECTION_TYPE_NETWORK,
+            &injectV4Blocked);
+    if (!NT_SUCCESS(status)) {
+        ERR("failed to create WFP injection v4 blocked handle", status);
+        return status;
+    }
+
+    status = FwpsInjectionHandleCreate(AF_INET6,
+            FWPS_INJECTION_TYPE_NETWORK,
+            &injectV6Blocked);
+    if (!NT_SUCCESS(status)) {
+        ERR("failed to create WFP injection v6 blocked handle", status);
         return status;
     }
 
@@ -54,26 +93,76 @@ NTSTATUS initializeInjectHandles() {
 }
 
 void destroyInjectHandles() {
-    if (injectV4Handle != NULL) {
-        FwpsInjectionHandleDestroy(injectV4Handle);
-        injectV4Handle = NULL;
+    if (injectV4InHandle != NULL) {
+        FwpsInjectionHandleDestroy(injectV4InHandle);
+        injectV4InHandle = NULL;
     }
 
-    if (injectV6Handle != NULL) {
-        FwpsInjectionHandleDestroy(injectV6Handle);
-        injectV6Handle = NULL;
+    if (injectV4OutHandle != NULL) {
+        FwpsInjectionHandleDestroy(injectV4OutHandle);
+        injectV4OutHandle = NULL;
+    }
+
+    if (injectV6InHandle != NULL) {
+        FwpsInjectionHandleDestroy(injectV6InHandle);
+        injectV6InHandle = NULL;
+    }
+
+    if (injectV6OutHandle != NULL) {
+        FwpsInjectionHandleDestroy(injectV6OutHandle);
+        injectV6OutHandle = NULL;
+    }
+
+    if (injectV4Blocked != NULL) {
+        FwpsInjectionHandleDestroy(injectV4Blocked);
+        injectV4Blocked = NULL;
+    }
+
+    if (injectV6Blocked != NULL) {
+        FwpsInjectionHandleDestroy(injectV6Blocked);
+        injectV6Blocked = NULL;
     }
 }
 
+/**
+ * @brief returns the proper injection handler for the packet. 
+ * Used for DNS or SPN redirected packets, we need separate handlers for inbound and outbound, for proper detection in the callout.
+ * See the use of FWPS_PACKET_INJECTED_BY_SELF.
+ * @par    packetInfo = info for the packet
+ * @return injection handler
+ */
 HANDLE getInjectionHandleForPacket(PortmasterPacketInfo *packetInfo) {
+    bool isLoopback = isPacketLoopback(packetInfo);
     if (packetInfo->ipV6 == 0) {
-        return injectV4Handle;
+        if(packetInfo->direction == DIRECTION_OUTBOUND || isLoopback) {
+            return injectV4OutHandle;
+        } else {
+            return injectV4InHandle;
+        }
     } else{
-        return injectV6Handle;
+        if(packetInfo->direction == DIRECTION_OUTBOUND || isLoopback) {
+            return injectV6OutHandle;
+        } else {
+            return injectV6InHandle;
+        }
     }
 }
 
-NTSTATUS injectPacket(PortmasterPacketInfo *packetInfo, UINT8 direction, void *packet, size_t packetLength, bool forceSend) {
+/**
+ * @brief returns the proper injection handler for the packet. 
+ * Used for injecting packets for blocked connections, or checking if packet was injected for blocking a connection.
+ * @par    packetInfo = info for the packet
+ * @return injection handler
+ */
+HANDLE getBlockedPacketInjectHandle(PortmasterPacketInfo *packetInfo) {
+    if (packetInfo->ipV6 == 0) {
+        return injectV4Blocked;
+    } else{
+        return injectV6Blocked;
+    }
+}
+
+NTSTATUS injectPacketWithHandle(HANDLE handle, PortmasterPacketInfo *packetInfo, UINT8 direction, void *packet, size_t packetLength) {
     // Create network buffer list for the packet
     PNET_BUFFER_LIST injectNBL = NULL;
     NTSTATUS status = wrapPacketDataInNB(packet, packetLength, &injectNBL);
@@ -83,12 +172,8 @@ NTSTATUS injectPacket(PortmasterPacketInfo *packetInfo, UINT8 direction, void *p
         return status;
     }
 
-    // get inject handle and check if packet is localhost
-    bool isLoopback = isPacketLoopback(packetInfo);
-    HANDLE handle = getInjectionHandleForPacket(packetInfo);
-
     // Inject packet. For localhost we must always send
-    if (direction == DIRECTION_OUTBOUND || isLoopback || forceSend) {
+    if (direction == DIRECTION_OUTBOUND) {
         status = FwpsInjectNetworkSendAsync(handle, NULL, 0,
                 UNSPECIFIED_COMPARTMENT_ID, injectNBL, freeAfterInject,
                 packet);
@@ -104,6 +189,24 @@ NTSTATUS injectPacket(PortmasterPacketInfo *packetInfo, UINT8 direction, void *p
     if (!NT_SUCCESS(status)) {
         freeAfterInject(packet, injectNBL, false);
     }
+
+    return status;
+}
+
+NTSTATUS injectPacket(PortmasterPacketInfo *packetInfo, UINT8 direction, void *packet, size_t packetLength) {
+    // get inject handle and check if packet is localhost
+    HANDLE handle = getInjectionHandleForPacket(packetInfo);
+    bool isLoopback = isPacketLoopback(packetInfo);
+    NTSTATUS status = STATUS_SUCCESS;
+    // Inject packet. For localhost we must always send
+    if (direction == DIRECTION_OUTBOUND || isLoopback) {
+        status = injectPacketWithHandle(handle, packetInfo, DIRECTION_OUTBOUND, packet, packetLength);
+        INFO("InjectNetworkSend executed: %s", printPacketInfo(packetInfo));
+    } else {
+        status = injectPacketWithHandle(handle, packetInfo, DIRECTION_INBOUND, packet, packetLength);
+        INFO("InjectNetworkReceive executed: %s", printPacketInfo(packetInfo));
+    }
+
     return status;
 }
 
@@ -140,7 +243,7 @@ void copyAndInject(PortmasterPacketInfo* packetInfo, PNET_BUFFER nb, UINT32 ipHe
         calcIPv6Checksum(packet, packetLength, true);
     }
 
-    status = injectPacket(packetInfo, packetInfo->direction, packet, packetLength, false); // this call will free the packet even if the inject fails
+    status = injectPacket(packetInfo, packetInfo->direction, packet, packetLength); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
         ERR("copyAndInject -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
@@ -330,23 +433,27 @@ static void generateICMPBlockedPacketIPv6(void* originalPacket, size_t originalP
 static NTSTATUS sendICMPBlockedPacket(PortmasterPacketInfo* packetInfo, void *originalPacket, size_t originalPacketLength, bool useLocalHost) {
     size_t packetLength = 0;
     void *icmpPacket = NULL;
-
+    HANDLE handle = NULL;
     if(packetInfo->ipV6) {
         packetLength = getICMPBlockedPacketSizeIPv6(originalPacketLength);
         icmpPacket = portmasterMalloc(packetLength, false);
         generateICMPBlockedPacketIPv6(originalPacket, originalPacketLength, useLocalHost, icmpPacket);
+        handle = injectV6Blocked;
     } else {
         packetLength = getICMPBlockedPacketSizeIPv4(originalPacket, originalPacketLength);
         icmpPacket = portmasterMalloc(packetLength, false);
         generateICMPBlockedPacketIPv4(originalPacket, originalPacketLength, useLocalHost, icmpPacket);
+        handle = injectV4Blocked;
     }
 
      // Reverse direction and inject packet
     UINT8 injectDirection = packetInfo->direction == DIRECTION_INBOUND ? DIRECTION_OUTBOUND : DIRECTION_INBOUND;
-    NTSTATUS status = injectPacket(packetInfo, injectDirection, icmpPacket, packetLength, useLocalHost); // this call will free the packet even if the inject fails
-
+    if(useLocalHost) {
+        injectDirection = DIRECTION_OUTBOUND;
+    }
+    NTSTATUS status = injectPacketWithHandle(handle, packetInfo, injectDirection, icmpPacket, packetLength);
     if (!NT_SUCCESS(status)) {
-        ERR("sendICMPBlockedPacket ipv6 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
+        ERR("sendICMPBlockedPacket -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
     }
 
     return status;
@@ -360,21 +467,23 @@ static NTSTATUS sendTCPResetPacket(PortmasterPacketInfo* packetInfo, void* origi
 
     size_t packetLength = 0;
     void *tcpResetPacket = NULL;
-
+    HANDLE handle = NULL;
     // Generate reset packet
     if(packetInfo->ipV6) {
         packetLength = getTCPResetPacketSizeIPv6();
         tcpResetPacket = portmasterMalloc(packetLength, false);
         generateTCPResetPacketIPv6(originalPacket, originalPacketLength, tcpResetPacket);
+        handle = injectV6Blocked;
     } else {
         packetLength = getTCPResetPacketSizeIPv4();
         tcpResetPacket = portmasterMalloc(packetLength, false);
         generateTCPResetPacketIPv4(originalPacket, originalPacketLength, tcpResetPacket);
+        handle = injectV4Blocked;
     }
 
     // Reverse direction and inject packet
     UINT8 injectDirection = packetInfo->direction == DIRECTION_INBOUND ? DIRECTION_OUTBOUND : DIRECTION_INBOUND;
-    NTSTATUS status = injectPacket(packetInfo, injectDirection, tcpResetPacket, packetLength, false); // this call will free the packet even if the inject fails
+    NTSTATUS status = injectPacketWithHandle(handle, packetInfo, injectDirection, tcpResetPacket, packetLength); // this call will free the packet even if the inject fails
 
     if(!NT_SUCCESS(status)) {
         ERR("send_icmp_blocked_packet ipv4 -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
@@ -439,6 +548,11 @@ void redirectPacket(PortmasterPacketInfo *packetInfo, PortmasterPacketInfo *redi
     INFO("About to modify headers for %s", printPacketInfo(packetInfo));
     INFO("Packet starts at 0p%p with %u bytes", packet, packetLength);
 
+    UINT16 destinationPort = PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
+    if(dns) {
+        destinationPort = PORT_DNS_NBO; // Port 53 in Network Byte Order!
+    }
+
     // Modify headers
     if (packetInfo->ipV6 == 0) { // IPv4
         size_t ipHeaderLength = calcIPv4HeaderSize(packet, packetLength);
@@ -459,11 +573,7 @@ void redirectPacket(PortmasterPacketInfo *packetInfo, PortmasterPacketInfo *redi
                 TCPHeader *tcpHeader = (TCPHeader*) ((UINT8*)packet + ipHeaderLength);
 
                 if (packetInfo->direction == DIRECTION_OUTBOUND) {
-                    if (dns) {
-                        tcpHeader->DstPort = PORT_DNS_NBO; // Port 53 in Network Byte Order!
-                    } else {
-                        tcpHeader->DstPort = PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
-                    }
+                    tcpHeader->DstPort = destinationPort; // SPN or DNS port
                 } else {
                     tcpHeader->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
                 }
@@ -473,11 +583,7 @@ void redirectPacket(PortmasterPacketInfo *packetInfo, PortmasterPacketInfo *redi
                 UDPHeader *udpHeader = (UDPHeader*) ((UINT8*)packet + ipHeaderLength);
 
                 if (packetInfo->direction == DIRECTION_OUTBOUND) {
-                    if (dns) {
-                        udpHeader->DstPort = PORT_DNS_NBO; // Port 53 in Network Byte Order!
-                    } else {
-                        udpHeader->DstPort = PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
-                    }
+                    udpHeader->DstPort = destinationPort; // SPN or DNS port
                 } else {
                     udpHeader->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
                 }
@@ -504,9 +610,6 @@ void redirectPacket(PortmasterPacketInfo *packetInfo, PortmasterPacketInfo *redi
                 for (int i = 0; i < 4; i++) {
                     ipHeader->DstAddr[i]= RtlUlongByteSwap(packetInfo->localIP[i]);
                 }
-                // IP_LOCALHOST is rejected by Windows Networkstack (nbl-status 0xc0000207, "STATUS_INVALID_ADDRESS_COMPONENT"
-                // Problem might be switching Network scope from "eth0" to "lo"
-                // Instead, just redir to the address the packet came from
             } else {
                 for (int i = 0; i < 4; i++) {
                     ipHeader->SrcAddr[i]= RtlUlongByteSwap(redirInfo->remoteIP[i]);
@@ -518,11 +621,7 @@ void redirectPacket(PortmasterPacketInfo *packetInfo, PortmasterPacketInfo *redi
                 TCPHeader* tcpHeader = (TCPHeader*) ((UINT8*)packet + ipHeaderLength);
 
                 if (packetInfo->direction == DIRECTION_OUTBOUND) {
-                    if (dns) {
-                        tcpHeader->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
-                    } else {
-                        tcpHeader->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
-                    }
+                    tcpHeader->DstPort = destinationPort; // SPN or DNS port
                 } else {
                     tcpHeader->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
                 }
@@ -532,11 +631,7 @@ void redirectPacket(PortmasterPacketInfo *packetInfo, PortmasterPacketInfo *redi
                 UDPHeader* udpHeader = (UDPHeader*) ((UINT8*)packet + ipHeaderLength);
 
                 if (packetInfo->direction == DIRECTION_OUTBOUND) {
-                    if (dns) {
-                        udpHeader->DstPort= PORT_DNS_NBO; // Port 53 in Network Byte Order!
-                    } else {
-                        udpHeader->DstPort= PORT_PM_SPN_ENTRY_NBO; // Port 717 in Network Byte Order!
-                    }
+                    udpHeader->DstPort = destinationPort; // SPN or DNS port
                 } else {
                     udpHeader->SrcPort= RtlUshortByteSwap(redirInfo->remotePort);
                 }
@@ -570,7 +665,7 @@ void redirectPacket(PortmasterPacketInfo *packetInfo, PortmasterPacketInfo *redi
     // Experience shows that using the compartment ID can sometimes cause errors.
     // It seems safer to always use UNSPECIFIED_COMPARTMENT_ID.
     // packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
-    NTSTATUS status = injectPacket(packetInfo, packetInfo->direction, packet, packetLength, false); // this call will free the packet even if the inject fails
+    NTSTATUS status = injectPacket(packetInfo, packetInfo->direction, packet, packetLength); // this call will free the packet even if the inject fails
 
     if (!NT_SUCCESS(status)) {
         ERR("redir -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);

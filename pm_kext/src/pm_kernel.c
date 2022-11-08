@@ -228,7 +228,7 @@ Exit:
     return status;
 }
 
-VOID DriverUnload(PDRIVER_OBJECT driverObject) {
+void DriverUnload(PDRIVER_OBJECT driverObject) {
     NTSTATUS status = STATUS_SUCCESS;
     UNICODE_STRING symlink = { 0 };
     UNREFERENCED_PARAMETER(driverObject);
@@ -250,17 +250,16 @@ VOID DriverUnload(PDRIVER_OBJECT driverObject) {
         FwpmEngineClose(filterEngineHandle);
         filterEngineHandle = NULL;
     }
+    teardownCache();
 
     RtlInitUnicodeString(&symlink, PORTMASTER_DOS_DEVICE_STRING);
     IoDeleteSymbolicLink(&symlink);
 
     INFO("--- Portmaster Kernel Extension unloaded ---");
-    return;
 }
 
-VOID emptyEventUnload(WDFDRIVER Driver) {
+void emptyEventUnload(WDFDRIVER Driver) {
     UNREFERENCED_PARAMETER(Driver);
-    return;
 }
 
 // driverDeviceControl communicates with Userland via
@@ -270,10 +269,10 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
 
     //Set pBuf pointer to Irp->AssociatedIrp.SystemBuffer, which was filled in userland
     //pBuf is also used to return memory from kernel to userland
-    PVOID pBuf = Irp->AssociatedIrp.SystemBuffer;
+    void *pBuf = Irp->AssociatedIrp.SystemBuffer;
 
     PIO_STACK_LOCATION pIoStackLocation = IoGetCurrentIrpStackLocation(Irp);
-    int IoControlCode= pIoStackLocation->Parameters.DeviceIoControl.IoControlCode;
+    int IoControlCode = pIoStackLocation->Parameters.DeviceIoControl.IoControlCode;
     switch(IoControlCode) {
 #ifdef DEBUG_ON
         //Hello World with ke-us shared memory "Irp->AssociatedIrp.SystemBuffer"
@@ -390,14 +389,12 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
         case IOCTL_GET_PAYLOAD: {
             void *packet = NULL;
             size_t packetLength = 0;
-            KLOCK_QUEUE_HANDLE lockHandle;
             // 0. Make Userland supplied Buffer useable
             PortmasterPayload *payload = (PortmasterPayload*) pBuf;
 
             INFO("IOCTL_GET_PAYLOAD for id=%u, expect %u Bytes", payload->id, payload->len);
             // 1. Locate packet in packet cache
-            KeAcquireInStackQueuedSpinLock(&globalPacketCacheLock, &lockHandle);
-            NTSTATUS rc = (NTSTATUS)getPacket(globalPacketCache, payload->id, &packet, &packetLength);
+            NTSTATUS rc = (NTSTATUS)packetCacheGet(getPacketCache(), payload->id, &packet, &packetLength);
 
             // 2. Sanity Checks
             if (rc != 0) {
@@ -438,7 +435,6 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
             Irp->IoStatus.Information = packetLength;
 
 IOCTL_GET_PAYLOAD_EXIT:
-            KeReleaseInStackQueuedSpinLock(&lockHandle);
             //Irp->IoStatus.Information is the ONLY way to transfer status information to userland
             //We need to share it with "Bytes Transferred".  That is why we ignore the (unsigned) type
             //of Irp->IoStatus.Information and use the first (sign) Bit to distinguish between

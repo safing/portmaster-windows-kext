@@ -19,8 +19,71 @@
 
 #include "pm_kernel.h"
 #include "verdict_cache.h"
-#include "pm_utils.h"
 #include "pm_debug.h"
+
+// https://troydhanson.github.io/uthash/userguide.html
+#define uthash_malloc(sz) portmasterMalloc(sz, false)
+#define uthash_free(ptr, sz) portmasterFree(ptr)
+#define uthash_fatal
+#define HASH_NO_STDINT 1
+#include "uthash.h"
+
+
+typedef struct {
+    UINT32 localIP[4];
+    UINT16 localPort;
+    UINT32 remoteIP[4];
+    UINT16 remotePort;
+    UINT8 protocol;
+} VerdictCacheKey;
+
+typedef struct VerdictCacheItem {
+    UINT64 lastAccessed; 
+    VerdictCacheKey key;
+    VerdictCacheKey redirectKey;
+
+    PortmasterPacketInfo *packetInfo;
+    verdict_t verdict;
+
+    UT_hash_handle hh;
+    UT_hash_handle hhRedirect;
+} VerdictCacheItem;
+
+#undef VerdictCache // previously defined as void
+typedef struct {
+    VerdictCacheItem *map;
+    VerdictCacheItem *mapRedirect;
+
+    VerdictCacheItem *itemPool;
+    UINT32 maxSize;
+    UINT32 *freeItemIndexes;
+    UINT32 numberOfFreeItems;
+
+    KSPIN_LOCK lock;
+} VerdictCache;
+
+// Holds the number of accesses/modifications performed on the cache
+static UINT64 cacheAccessCounter = 0;
+
+static VerdictCacheKey getCacheKey(PortmasterPacketInfo *info) {
+    VerdictCacheKey key = {0};
+    memcpy(key.localIP, info->localIP, sizeof(UINT32) * 4);
+    key.localPort = info->localPort;
+    memcpy(key.remoteIP, info->remoteIP, sizeof(UINT32) * 4);
+    key.remotePort = info->remotePort;
+    key.protocol = info->protocol;
+    return key;
+}
+
+static VerdictCacheKey getCacheRedirectKey(PortmasterPacketInfo *info) {
+    VerdictCacheKey key = {0};
+    memcpy(key.localIP, info->localIP, sizeof(UINT32) * 4);
+    key.localPort = info->localPort;
+    memcpy(key.remoteIP, info->localIP, sizeof(UINT32) * 4);
+    key.remotePort = 0;
+    key.protocol = info->protocol;
+    return key;
+}
 
 /**
  * @brief Initializes the verdict cache
@@ -30,66 +93,32 @@
  * @return error code
  *
  */
-int createVerdictCache(UINT32 maxSize, VerdictCache **verdictCache) {
-    if (!maxSize) {
-        return 1;
-    }
-    VerdictCache* newVerdictCache = _ALLOC(sizeof(VerdictCache), 1);
-    if (!newVerdictCache) {
+int verdictCacheCreate(UINT32 maxSize, void **verdictCache) {
+    if (maxSize == 0) {
         return 1;
     }
 
-    newVerdictCache->size = 0;
+    VerdictCache *newVerdictCache = portmasterMalloc(sizeof(VerdictCache), false);
+    if (newVerdictCache == NULL) {
+        return 1;
+    }
+
+    newVerdictCache->itemPool = portmasterMalloc(sizeof(VerdictCacheItem) * maxSize, false);
+    if(newVerdictCache->itemPool == NULL) {
+        portmasterFree(newVerdictCache);
+        return 1;
+    }
+
+    newVerdictCache->numberOfFreeItems = maxSize;
+
+    newVerdictCache->map = NULL;
+    newVerdictCache->mapRedirect = NULL;
     newVerdictCache->maxSize = maxSize;
+
+    KeInitializeSpinLock(&newVerdictCache->lock);
     *verdictCache = newVerdictCache;
 
     return 0;
-}
-
-/**
- * @brief Cleans the verdict cache
- *
- * @par    verdict_cache = verdict_cache to use
- * @par    packetInfo   = returns portmaster_packet_info to free
- * @return error code
- *
- */
-int cleanVerdictCache(VerdictCache *verdictCache, PortmasterPacketInfo **packetInfo) {
-    if (!verdictCache) {
-        return 1;
-    }
-
-    if (verdictCache->size <= verdictCache->maxSize) {
-        return 1;
-    }
-
-    if (verdictCache->tail) {
-        // get last item
-        VerdictCacheItem *lastItem = verdictCache->tail;
-
-        // remove from list
-        if (lastItem->prev) {
-            // reconnect tail if there is an item left
-            verdictCache->tail = lastItem->prev;
-            // delete next of new last item
-            lastItem->prev->next = NULL;
-        } else {
-            // list is empty! reset it
-            verdictCache->tail = NULL;
-            verdictCache->head = NULL;
-        }
-
-        // set return value
-        *packetInfo = lastItem->packetInfo;
-
-        // free
-        _FREE(lastItem);
-        verdictCache->size--;
-
-        return 0;
-    }
-
-    return 1;
 }
 
 /**
@@ -99,19 +128,30 @@ int cleanVerdictCache(VerdictCache *verdictCache, PortmasterPacketInfo **packetI
  * @par    freeData = callback function that is executed for each item before delete were the data of the item can be deleted
  *
  */
-void clearAllEntriesFromVerdictCache(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t)) {
-    VerdictCacheItem *item = verdictCache->head;
-    while(item != NULL) {
-        VerdictCacheItem *next = item->next;
-        freeData(item->packetInfo, item->verdict);
-        _FREE(item);
-        item = next;
-    }
-    verdictCache->size = 0;
-    verdictCache->head = NULL;
-    verdictCache->tail = NULL;
-}
 
+void verdictCacheClear(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t)) {
+    DEBUG("verdictCacheClear");
+
+    // Lock to check verdict cache.
+    KLOCK_QUEUE_HANDLE lockHandle = {0};
+    KeAcquireInStackQueuedSpinLock(&verdictCache->lock, &lockHandle);
+
+    HASH_CLEAR(hh, verdictCache->map);
+    HASH_CLEAR(hhRedirect, verdictCache->mapRedirect);
+
+    for(UINT32 i = 0; i < verdictCache->maxSize; i++) {
+        VerdictCacheItem *item = &verdictCache->itemPool[i];
+        if(item->packetInfo != NULL) {
+            freeData(item->packetInfo, item->verdict);
+        }
+    }
+
+    memset(verdictCache->itemPool, 0, sizeof(VerdictCacheItem) * verdictCache->maxSize);
+    verdictCache->numberOfFreeItems = verdictCache->maxSize;
+    verdictCache->map = NULL;
+    verdictCache->mapRedirect = NULL;
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
+}
 
 /**
  * @brief Tears down the verdict cache
@@ -120,10 +160,37 @@ void clearAllEntriesFromVerdictCache(VerdictCache *verdictCache, void(*freeData)
  * @return error code
  *
  */
-int teardownVerdictCache(VerdictCache *verdictCache) {
-    UNREFERENCED_PARAMETER(verdictCache);
-    // FIXME: implement
+int verdictCacheTeardown(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t)) {
+    if(verdictCache == NULL) {
+        return 0;
+    }
+
+    verdictCacheClear(verdictCache, freeData);
+    portmasterFree(verdictCache->itemPool);
+    portmasterFree(verdictCache);
     return 0;
+}
+
+static VerdictCacheItem *getOldestAccessTimeItem(VerdictCache *verdictCache) {
+    UINT64 oldestAccessNumber = cacheAccessCounter + 1;
+    VerdictCacheItem *oldestItem = NULL;
+    for(UINT32 i = 0; i < verdictCache->maxSize; i++) {
+        VerdictCacheItem *current = &verdictCache->itemPool[i];
+        if(current->lastAccessed < oldestAccessNumber) {
+            oldestAccessNumber = current->lastAccessed;
+            oldestItem = current;
+        }
+    }
+    return oldestItem;
+}
+
+static void resetItem(VerdictCache *verdictCache, VerdictCacheItem *item) {
+    HASH_DELETE(hh, verdictCache->map, item);
+    // Delete redirect only if the item is in the map
+    if(item->hhRedirect.key != NULL) { 
+        HASH_DELETE(hhRedirect, verdictCache->mapRedirect, item);
+    }
+    memset(item, 0, sizeof(VerdictCacheItem));
 }
 
 /**
@@ -135,35 +202,69 @@ int teardownVerdictCache(VerdictCache *verdictCache) {
  * @return error code
  *
  */
-int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, verdict_t verdict) {
-    if (!verdictCache || !packetInfo || !verdict) {
-        ERR("add_verdict NULL pointer exception verdictCache=0p%Xp, packetInfo=0p%Xp, verdict=0p%Xp ", verdictCache, packetInfo, verdict);
+int verdictCacheAdd(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, verdict_t verdict, PortmasterPacketInfo **removedPacketInfo) {
+    if (verdictCache == NULL || packetInfo == NULL || verdict == 0) {
+        ERR("verdictCacheAdd NULL pointer exception verdictCache=0p%Xp, packetInfo=0p%Xp, verdict=0p%Xp ", verdictCache, packetInfo, verdict);
         return 1;
     }
 
-    VerdictCacheItem *newItem = _ALLOC(sizeof(VerdictCacheItem), 1);
-    if(!newItem) {
-        ERR("add_verdict tried to add NULL-Pointer verdict");
-        return 2;
+    cacheAccessCounter++;
+
+    VerdictCacheItem *newItem = NULL;
+    VerdictCacheKey key = getCacheKey(packetInfo);
+
+    // Lock to check verdict cache.
+    KLOCK_QUEUE_HANDLE lockHandle = {0};
+    KeAcquireInStackQueuedSpinLock(&verdictCache->lock, &lockHandle);
+
+    int rc = 0;
+
+    #pragma warning(suppress : 4127) //  warning C4127: conditional expression is constant -> if generated by macro
+    HASH_FIND(hh, verdictCache->map, &key, sizeof(VerdictCacheKey), newItem);
+    if(newItem != NULL) {
+        // already in
+        INFO("addVerdict packet was already in the verdict cache");
+        rc = 3;
     }
 
-    newItem->packetInfo = packetInfo;
-    newItem->verdict = verdict;
-
-    // insert as first item
-    if (verdictCache->head != NULL) {
-        newItem->next = verdictCache->head;
-        verdictCache->head->prev = newItem;
+    if(rc == 0) {
+        if(verdictCache->numberOfFreeItems > 0) {
+            newItem = &verdictCache->itemPool[verdictCache->maxSize - verdictCache->numberOfFreeItems];
+            verdictCache->numberOfFreeItems -= 1;
+        } else {
+            VerdictCacheItem *item = getOldestAccessTimeItem(verdictCache);
+            if(item == NULL) {
+                ERR("addVerdict failed to find free element");
+                rc = 2;
+            } else {
+                *removedPacketInfo = item->packetInfo;
+                resetItem(verdictCache, item);
+                newItem = item;
+            }
+        }
     }
-    verdictCache->head = newItem;
 
-    // set tail if only item
-    if (verdictCache->tail == NULL) {
-        verdictCache->tail = newItem;
+    if(rc == 0) {
+        // Set key
+        newItem->key = key;
+        newItem->packetInfo = packetInfo;
+        newItem->verdict = verdict;
+        newItem->lastAccessed = cacheAccessCounter;
+        HASH_ADD(hh, verdictCache->map, key, sizeof(VerdictCacheKey), newItem);
+
+        if(verdict == PORTMASTER_VERDICT_REDIR_DNS || verdict == PORTMASTER_VERDICT_REDIR_TUNNEL) {
+            newItem->redirectKey = getCacheRedirectKey(packetInfo);
+            // insert only if we dont have already item with the same key
+            VerdictCacheItem *redirectItem = NULL;
+            #pragma warning(suppress : 4127) //  warning C4127: conditional expression is constant -> if generated by macro
+            HASH_FIND(hhRedirect, verdictCache->mapRedirect, &newItem->redirectKey, sizeof(VerdictCacheKey), redirectItem);
+            if(redirectItem == NULL) {
+                HASH_ADD(hhRedirect, verdictCache->mapRedirect, redirectKey, sizeof(VerdictCacheKey), newItem);
+            }
+        }
     }
-
-    verdictCache->size++;
-    return 0;
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
+    return rc;
 }
 
 /**
@@ -174,51 +275,29 @@ int addVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, ver
  * @return verdict
  *
  */
-verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo) {
-    if (!verdictCache || !packetInfo) {
+static verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo) {
+    if (verdictCache == NULL || packetInfo == NULL) {
         ERR("verdictCache 0p%xp or packet_info 0p%xp was null", verdictCache, packetInfo);
         return PORTMASTER_VERDICT_ERROR;
     }
+    cacheAccessCounter++;
 
-    // check if list is empty
-    if (!verdictCache->head) {
-        INFO("verdictCache was empty");
+    if(verdictCache->map == NULL) {
+        // no entries
         return PORTMASTER_VERDICT_GET;
     }
 
-    // check first item
-    if (compareFullPacketInfo(packetInfo, verdictCache->head->packetInfo)) {
-        DEBUG("compareFullPacketInfo successful");
-        return verdictCache->head->verdict;
+    VerdictCacheItem *item = NULL;
+    VerdictCacheKey key = getCacheKey(packetInfo);
+    #pragma warning(suppress : 4127) //  warning C4127: conditional expression is constant -> if generated by macro
+    HASH_FIND(hh, verdictCache->map, &key, sizeof(VerdictCacheKey), item);
+
+    if(item == NULL) {
+        return PORTMASTER_VERDICT_GET;
     }
 
-    // check the rest of the list
-    VerdictCacheItem *item = verdictCache->head->next;
-    while (item) {
-        if (compareFullPacketInfo(packetInfo, item->packetInfo)) {
-            // pull item to front
-            if (item->next) {
-                // connect previous and next items
-                item->prev->next = item->next;
-                item->next->prev = item->prev;
-            } else {
-                // connect new last item with list tail
-                item->prev->next = NULL;
-                verdictCache->tail = item->prev;
-            }
-            // insert in front
-            item->prev = NULL;
-            item->next = verdictCache->head;
-            verdictCache->head->prev = item;
-            verdictCache->head = item;
-
-            // success
-            return item->verdict;
-        }
-        item = item->next;
-    }
-
-    return PORTMASTER_VERDICT_GET;
+    item->lastAccessed = cacheAccessCounter;
+    return item->verdict;
 }
 
 /**
@@ -231,49 +310,59 @@ verdict_t checkVerdict(VerdictCache *verdictCache, PortmasterPacketInfo *packetI
  * @return error code
  *
  */
-verdict_t checkReverseRedirect(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, PortmasterPacketInfo **redirInfo) {
-    if (!verdictCache || !packetInfo || !redirInfo) {
+static verdict_t checkReverseRedirect(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, PortmasterPacketInfo **redirInfo) {
+    if (verdictCache == NULL || packetInfo == NULL || redirInfo == NULL) {
         return PORTMASTER_VERDICT_GET;
     }
 
-    // check if list is empty
-    if (!verdictCache->head) {
+    cacheAccessCounter++;
+
+    if(verdictCache->mapRedirect == NULL) {
+        // no entries
         return PORTMASTER_VERDICT_GET;
     }
 
-    // check first item
-    if (compareReverseRedirPacketInfo(verdictCache->head->packetInfo, packetInfo)) {
-        *redirInfo = verdictCache->head->packetInfo;
-        return verdictCache->head->verdict;
+    VerdictCacheItem *item = NULL;
+    VerdictCacheKey key = getCacheRedirectKey(packetInfo);
+    #pragma warning(suppress : 4127) //  warning C4127: conditional expression is constant -> if generated by macro
+    HASH_FIND(hhRedirect, verdictCache->mapRedirect, &key, sizeof(VerdictCacheKey), item);
+    if(item == NULL) {
+        return PORTMASTER_VERDICT_GET;
     }
+    
+    item->lastAccessed = cacheAccessCounter;
+    *redirInfo = item->packetInfo;
+    return item->verdict;
+}
 
-    // check the rest of the list
-    VerdictCacheItem *item = verdictCache->head->next;
-    while (item) {
-        if (compareReverseRedirPacketInfo(item->packetInfo, packetInfo)) {
+verdict_t verdictCacheGet(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, PortmasterPacketInfo **redirInfo) {
+    verdict_t verdict = PORTMASTER_VERDICT_GET;
 
-            // pull item to front
-            if (item->next) {
-                // connect previous and next items
-                item->prev->next = item->next;
-                item->next->prev = item->prev;
-            } else {
-                // connect new last item with list tail
-                item->prev->next = NULL;
-                verdictCache->tail = item->prev;
-            }
-            // insert in front
-            item->prev = NULL;
-            item->next = verdictCache->head;
-            verdictCache->head->prev = item;
-            verdictCache->head = item;
+    // Lock to check verdict cache.
+    KLOCK_QUEUE_HANDLE lockHandle = {0};
+    KeAcquireInStackQueuedSpinLock(&verdictCache->lock, &lockHandle);
 
-            // set return value
-            *redirInfo = item->packetInfo;
-            return item->verdict;
+    if (packetInfo->direction == DIRECTION_INBOUND &&
+        (packetInfo->remotePort == PORT_PM_SPN_ENTRY || packetInfo->remotePort == PORT_DNS)) {
+        verdict = checkReverseRedirect(verdictCache, packetInfo, redirInfo);
+
+        // Verdicts returned by check_reverse_redir must only be
+        // PORTMASTER_VERDICT_REDIR_DNS or PORTMASTER_VERDICT_REDIR_TUNNEL.
+        if (verdict != PORTMASTER_VERDICT_REDIR_DNS && verdict != PORTMASTER_VERDICT_REDIR_TUNNEL) {
+            verdict = PORTMASTER_VERDICT_GET;
         }
-        item = item->next;
     }
 
-    return PORTMASTER_VERDICT_GET;
+    // Check verdict normally if we did not detect a packet that should be reverse DNAT-ed.
+    if (verdict == PORTMASTER_VERDICT_GET) {
+        verdict = checkVerdict(verdictCache, packetInfo);
+
+        // If packet should be DNAT-ed set redirInfo to packetInfo.
+        if (verdict == PORTMASTER_VERDICT_REDIR_DNS || verdict == PORTMASTER_VERDICT_REDIR_TUNNEL) {
+            *redirInfo = packetInfo;
+        }
+    }
+
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
+    return verdict;
 }

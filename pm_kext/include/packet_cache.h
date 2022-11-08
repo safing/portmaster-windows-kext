@@ -16,38 +16,13 @@
 
 #ifndef __LINUX_ENV__
 #include <intsafe.h>
+#define uint8_t  UINT8
 #define uint16_t UINT16
 #define uint32_t UINT32
 #define uint64_t UINT64
 #endif
 
-typedef struct PacketCacheItem {
-    struct PacketCacheItem *prev;
-    struct PacketCacheItem *next;
-
-    uint32_t packetID;
-    PortmasterPacketInfo *packetInfo;
-    void *packet;
-    size_t packetLength;
-    /*
-    COMPARTMENT_ID compartmentId;
-    IF_INDEX interfaceIndex;
-    IF_INDEX subInterfaceIndex;
-    */
-} PacketCacheItem;
-
-typedef struct  {
-    uint32_t size;
-    uint32_t maxSize;
-    uint32_t nextPacketID;
-    PacketCacheItem *head;
-    PacketCacheItem *tail;
-} PacketCache;
-
-
-extern PacketCache *globalPacketCache;
-extern KSPIN_LOCK globalPacketCacheLock;
-
+#define PacketCache void
 
 /**
  * @brief Initializes the packet cache
@@ -57,18 +32,7 @@ extern KSPIN_LOCK globalPacketCacheLock;
  * @return error code
  *
  */
-int createPacketCache(uint32_t maxSize, PacketCache **packetCache);
-
-/**
- * @brief Cleans the packet cache
- *
- * @par    packetCache = packet_cache to use
- * @par    packetInfo  = returns PORTMASTER_PACKET_INFO to free
- * @par    packet      = returns void to free
- * @return error code
- *
- */
-int cleanPacketCache(PacketCache *packetCache, PortmasterPacketInfo **packetInfo, void **packet);
+int packetCacheCreate(uint32_t maxSize, PacketCache **packetCache);
 
 /**
  * @brief Tears down the packet cache
@@ -77,18 +41,18 @@ int cleanPacketCache(PacketCache *packetCache, PortmasterPacketInfo **packetInfo
  * @return error code
  *
  */
-int teardownPacketCache(PacketCache *packetCache);
+int packetCacheTeardown(PacketCache *packetCache, void(*freeData)(PortmasterPacketInfo*, void*));
 
 /**
  * @brief Registers a packet
  *
  * @par    packetCache = packetCache to use
  * @par    packetInfo  = pointer to packetInfo
- * @par    packet       = pointer to packet
+ * @par    packet      = pointer to packet
  * @return new packet ID
  *
  */
-uint32_t registerPacket(PacketCache *packetCache, PortmasterPacketInfo *packetInfo, void *packet, size_t packetLength);
+uint32_t packetCacheRegister(PacketCache *packetCache, PortmasterPacketInfo *packetInfo, void *packet, size_t packetLength, PortmasterPacketInfo **oldPacketInfo, void **oldPacket);
 
 /**
  * @brief Retrieves and deletes a packet from list, if it exists.
@@ -100,7 +64,7 @@ uint32_t registerPacket(PacketCache *packetCache, PortmasterPacketInfo *packetIn
  * @return error code
  *
  */
-int retrievePacket(PacketCache *packetCache, uint32_t packetID, PortmasterPacketInfo **packetInfoPtr, void **packet, size_t *packetLength);
+int packetCacheRetrieve(PacketCache *packetCache, uint32_t packetID, PortmasterPacketInfo **packetInfoPtr, void **packet, size_t *packetLength);
 
 /**
  * @brief Retrieves a packet from list, if it exists.
@@ -111,6 +75,6 @@ int retrievePacket(PacketCache *packetCache, uint32_t packetID, PortmasterPacket
  * @return error code
  *
  */
-int getPacket(PacketCache *packetCache, uint32_t packetID, void **packet, size_t *packetLength);
+int packetCacheGet(PacketCache *packetCache, uint32_t packetID, void **packet, size_t *packetLength);
 
 #endif

@@ -86,21 +86,4 @@ bool isPacketLoopback(PortmasterPacketInfo *packet);
  */
 NTSTATUS copyIPv6(const FWPS_INCOMING_VALUES* inFixedValues, FWPS_FIELDS_OUTBOUND_IPPACKET_V6 idx, UINT32 *ip);
 
-#endif
-
-#ifndef DYN_ALLOC_FREE
-#define DYN_ALLOC_FREE
-
-#ifdef BUILD_ENV_DRIVER
-
-#define _ALLOC(element_size, n_of_elements) portmasterMalloc(element_size*n_of_elements, false)
-#define _FREE(p_element) portmasterFree(p_element)
-
-#else
-
-#define _ALLOC(element_size, n_of_elements) calloc(element_size, n_of_elements)
-#define _FREE(p_element) free(p_element)
-
-#endif // DYN_ALLOC_FREE
-
 #endif // PM_UTILS_H
