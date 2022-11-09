@@ -192,22 +192,31 @@ static PacketCacheItem* getPacketFromID(PacketCache *packetCache, UINT32 packetI
 int packetCacheRetrieve(PacketCache *packetCache, UINT32 packetID, PortmasterPacketInfo **packetInfo, void **packet, size_t *packetLength) {
     DEBUG("retrieve_packet called");
 
+    int rc = 0;
     KLOCK_QUEUE_HANDLE lockHandle = {0};
     KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
     PacketCacheItem *item = getPacketFromID(packetCache, packetID);
-    
-    if(item != NULL) {
-        *packetInfo = item->packetInfo;
-        *packet = item->packet;
-        *packetLength = item->packetLength;
-        memset(item, 0, sizeof(PacketCacheItem));
-    }
 
-    KeReleaseInStackQueuedSpinLock(&lockHandle);
-    if(item == NULL) {
-        return 1;
+    // Check if entry was already overwritten
+    bool cacheFilledMoreThenOnce = (packetCache->nextPacketID - 1) > packetCache->maxSize;
+    if(cacheFilledMoreThenOnce && packetID <= (packetCache->nextPacketID - packetCache->maxSize - 1)) {
+        DEBUG("Requested packet was overwritten: %d", packetID);
+        rc = 1;
     }
-    return 0;
+    
+    if(rc == 0) {
+        if(item != NULL) {
+            *packetInfo = item->packetInfo;
+            *packet = item->packet;
+            *packetLength = item->packetLength;
+            memset(item, 0, sizeof(PacketCacheItem));
+        } else {
+            rc = 2;
+        }
+    }
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
+    
+    return rc;
 }
 
 /**
@@ -221,19 +230,27 @@ int packetCacheRetrieve(PacketCache *packetCache, UINT32 packetID, PortmasterPac
  */
 int packetCacheGet(PacketCache *packetCache, uint32_t packetID, void **packet, size_t *packetLength) {
     DEBUG("packetCacheGet called");
-
+    int rc = 0;
     KLOCK_QUEUE_HANDLE lockHandle = {0};
     KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
 
-    PacketCacheItem *item = getPacketFromID(packetCache, packetID);
-    if(item != NULL) {
-        *packet = item->packet;
-        *packetLength = item->packetLength;
+    // Check if entry was already overwritten
+    bool cacheFilledMoreThenOnce = (packetCache->nextPacketID - 1) > packetCache->maxSize;
+    if(cacheFilledMoreThenOnce && packetID <= (packetCache->nextPacketID - packetCache->maxSize - 1)) {
+        DEBUG("Requested packet was overwritten: %d", packetID);
+        rc = 1;
+    }
+
+    if(rc == 0) {
+        PacketCacheItem *item = getPacketFromID(packetCache, packetID);
+        if(item != NULL) {
+            *packet = item->packet;
+            *packetLength = item->packetLength;
+        } else {
+            rc = 2;
+        }
     }
     KeReleaseInStackQueuedSpinLock(&lockHandle);
 
-    if(item == NULL) {
-        return 1;
-    }
-    return 0;
+    return rc;
 }

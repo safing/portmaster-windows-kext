@@ -141,7 +141,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     //Handle Packet according to Verdict
     switch (verdict) {
         case PORTMASTER_VERDICT_DROP:
-            // INFO("PORTMASTER_VERDICT_DROP: %s", printPacketInfo(packetInfo));
+            INFO("PORTMASTER_VERDICT_DROP: %s", printPacketInfo(packetInfo));
             portmasterFree(packet);
             return;
         case PORTMASTER_VERDICT_BLOCK:
@@ -150,7 +150,7 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
             portmasterFree(packet);
             return;
         case PORTMASTER_VERDICT_ACCEPT:
-            // DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
+            DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
             break; // ACCEPT
         case PORTMASTER_VERDICT_REDIR_DNS:
             INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", printPacketInfo(packetInfo));
@@ -328,7 +328,7 @@ FWP_ACTION_TYPE classifySingle(
             return FWP_ACTION_BLOCK;
 
         case PORTMASTER_VERDICT_ACCEPT:
-            // INFO("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
+            INFO("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
             return FWP_ACTION_PERMIT;
 
         case PORTMASTER_VERDICT_REDIR_DNS:
