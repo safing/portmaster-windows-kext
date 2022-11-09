@@ -174,8 +174,13 @@ extern _EXPORT UINT32 PortmasterGetPayload(UINT32 packet_id, UINT8* buf, UINT32*
 }
 
 extern _EXPORT UINT32 PortmasterClearCache() {
-    UINT32 rc = DeviceIoControl(deviceHandle, IOCTL_CLEAR_CACHE, NULL, 0, NULL, 0, NULL, NULL);
-    return rc;
+    bool success = DeviceIoControl(deviceHandle, IOCTL_CLEAR_CACHE, NULL, 0, NULL, 0, NULL, NULL);
+    if(!success) {
+        UINT32 rc = GetLastError();
+        WARN("Failed to clear cache: %d", rc);
+        return rc;
+    }
+    return ERROR_SUCCESS;
 }
 
 
