@@ -69,9 +69,6 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP Ir
 NTSTATUS InitDriverObject(DRIVER_OBJECT *driverObject, UNICODE_STRING *registryPath,
     WDFDRIVER *driver, WDFDEVICE *device);
 
-// shared mem to communicate between callout -> device_control -> userland
-char globalBuf[256];
-
 // Global IO Queue for communicating
 PRKQUEUE globalIOQueue;
 static LARGE_INTEGER ioQueueTimeout;
@@ -274,54 +271,17 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
     PIO_STACK_LOCATION pIoStackLocation = IoGetCurrentIrpStackLocation(Irp);
     int IoControlCode = pIoStackLocation->Parameters.DeviceIoControl.IoControlCode;
     switch(IoControlCode) {
-#ifdef DEBUG_ON
-        //Hello World with ke-us shared memory "Irp->AssociatedIrp.SystemBuffer"
-        case IOCTL_HELLO: {
-            INFO("IOCTL HELLO");
-            const PCHAR welcome = "Hello from kerneland.";
-            long n100nsTimeCount = 70000000;
-            // FIXME: warning C4996: 'RtlConvertLongToLargeInteger': was declared deprecated
-            LARGE_INTEGER li = { .QuadPart = -1 * n100nsTimeCount };  //WTF?
-            NTSTATUS rc = KeDelayExecutionThread(
-                    UserMode, //KPROCESSOR_MODE WaitMode, KernelMode
-                    true,   //Alterable
-                    &li //Unit: 100ns
-                );
-            INFO("Message received : %s", pBuf);
-            rc = KeDelayExecutionThread(
-                    KernelMode, //KPROCESSOR_MODE WaitMode,
-                    false,  //Alterable
-                    &li //Unit: 100ns
-                );
-            RtlZeroMemory(pBuf, pIoStackLocation->Parameters.DeviceIoControl.InputBufferLength);
-            //Copy message from kernel to pBuf, so that it can be evaluated in userland
-            RtlCopyMemory(pBuf, welcome, strlen(welcome) );
-            //Finish the I/O operation by simply completing the packet and returning
-            //the same status as in the packet itself.
+        case IOCTL_VERSION: {
+            char *versionBuffer = (char*)pBuf;
+            versionBuffer[0] = PM_VERSION_MAJOR;
+            versionBuffer[1] = PM_VERSION_MINOR;
+            versionBuffer[2] = PM_VERSION_REVISION;
+            versionBuffer[3] = PM_VERSION_BUILD;
             Irp->IoStatus.Status = STATUS_SUCCESS;
-            Irp->IoStatus.Information = strlen(welcome);
-            IoCompleteRequest(Irp,IO_NO_INCREMENT);
+            Irp->IoStatus.Information = 4;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_SUCCESS;
         }
-
-        case IOCTL_RECV_VERDICT_REQ_POLL: {
-            DEBUG("IOCTL_RECV_VERDICT_REQ_POLL");
-            size_t length = strlen(globalBuf);
-            if (length > 0) {
-                RtlZeroMemory(pBuf, pIoStackLocation->Parameters.DeviceIoControl.InputBufferLength);
-                //Copy message from kernel to pBuf, so that it can be evaluated in userland
-                RtlCopyMemory(pBuf, globalBuf, strlen(globalBuf) );
-                Irp->IoStatus.Status = STATUS_SUCCESS;
-                Irp->IoStatus.Information = strlen(globalBuf);
-                IoCompleteRequest(Irp,IO_NO_INCREMENT);
-                RtlZeroMemory(globalBuf, sizeof(globalBuf));
-                return STATUS_SUCCESS;
-            }
-            Irp->IoStatus.Status = STATUS_TIMEOUT;
-            IoCompleteRequest(Irp,IO_NO_INCREMENT);
-            return STATUS_TIMEOUT;
-        }
-#endif
         case IOCTL_RECV_VERDICT_REQ: {
             DEBUG("IOCTL_RECV_VERDICT_REQ");
             PLIST_ENTRY ple = KeRemoveQueue(
@@ -343,7 +303,7 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
                 INFO("List was empty or not-> STATUS_USER_APC");
                 Irp->IoStatus.Status = STATUS_USER_APC;
                 Irp->IoStatus.Information = 0;
-                IoCompleteRequest(Irp,IO_NO_INCREMENT);
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
                 return STATUS_USER_APC;
             }
 
@@ -351,7 +311,7 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
 
             {
                 DataEntry *dentry = (DataEntry*)CONTAINING_RECORD(ple, DataEntry, entry);
-                int size= sizeof(PortmasterPacketInfo);
+                int size = sizeof(PortmasterPacketInfo);
 
                 RtlZeroMemory(pBuf, pIoStackLocation->Parameters.DeviceIoControl.InputBufferLength);
                 //Copy message from kernel to pBuf, so that it can be evaluated in userland
@@ -450,7 +410,14 @@ IOCTL_GET_PAYLOAD_EXIT:
         case IOCTL_CLEAR_CACHE: {
             clearCache();
             Irp->IoStatus.Status = STATUS_SUCCESS;
-            IoCompleteRequest(Irp,IO_NO_INCREMENT);
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return STATUS_SUCCESS;
+        }
+        case IOCTL_UPDATE_VERDICT: {
+            VerdictUpdateInfo *verdictUpdateInfo = (VerdictUpdateInfo*)pBuf;
+            updateVerdict(verdictUpdateInfo);
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_SUCCESS;
         }
         default: {

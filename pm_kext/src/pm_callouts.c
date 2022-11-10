@@ -105,7 +105,6 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     size_t packetLength = 0;
     int rc = packetCacheRetrieve(packetCache, id, &packetInfo, &packet, &packetLength);
    
-
     if (rc != 0) {
         // packet id was not in packet cache
         INFO("received verdict response for unknown packet id: %u", id);
@@ -193,6 +192,14 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
 
 PacketCache* getPacketCache() {
     return packetCache;
+}
+
+int updateVerdict(VerdictUpdateInfo *info) {
+    if(info->ipV6) {
+        return verdictCacheUpdate(verdictCacheV6, info);
+    } else {
+        return verdictCacheUpdate(verdictCacheV4, info);
+    }
 }
 
 /******************************************************************

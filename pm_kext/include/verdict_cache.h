@@ -41,7 +41,7 @@ int verdictCacheCreate(UINT32 maxSize, VerdictCache **verdict_cache);
 /**
  * @brief Remove all items from verdict cache
  *
- * @par    verdict_cache = verdict_cache to use
+ * @par    verdict_cache = VerdictCache to use
  * @par    freeData = callback function that is executed for each item before delete were the data of the item can be deleted
  *
  */
@@ -57,22 +57,33 @@ void verdictCacheClear(VerdictCache *verdictCache, void(*freeData)(PortmasterPac
 int verdictCacheTeardown(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t));
 
 /**
+ * @brief Updates a verdict that is already in the cache
+ *
+ * @par    verdict_cache = VerdictCache to use
+ * @par    info   = pointer to verdictUpdateInfo
+ * @return error code
+ *
+ */
+int verdictCacheUpdate(VerdictCache *verdictCache, VerdictUpdateInfo *info);
+
+/**
  * @brief Adds verdict to cache
  *
- * @par    verdict_cache = verdict_cache to use
- * @par    packet_info   = pointer to packet_info
+ * @par    verdictCache = VerdictCache to use
+ * @par    packetInfo   = pointer to PacketInfo
  * @par    verdict       = verdict to save
  * @return error code
  *
  */
 int verdictCacheAdd(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, verdict_t verdict, PortmasterPacketInfo **removedPacketInfo);
 
+
 /**
  * @brief returns the verdict of a packet if inside the cache, with redirect info if available
  *
- * @par    verdict_cache = verdict_cache to use
- * @par    packet_info   = pointer to packet_info
- * @par    redir_info    = double pointer to packet_info (return value)
+ * @par    verdictCache = VerdictCache to use
+ * @par    packetInfo   = pointer to PacketInfo
+ * @par    redirInfo    = double pointer to packetInfo (return value)
  * @par    verdict       = pointer to verdict (return value)
  * @return error code
  *

@@ -193,13 +193,13 @@ extern _EXPORT UINT32 PortmasterClearCache() {
 */
 extern _EXPORT UINT32 PortmasterRecvVerdictRequestHello(PortmasterPacketInfo *packetInfo) {
     int rc = 0;
-    char *welcome = "Hello from userland.";
-    DWORD dwBytesRead = 0;
-    char ReadBuffer[50] = {0};
+    // char *welcome = "Hello from userland.";
+    // DWORD dwBytesRead = 0;
+    // char ReadBuffer[50] = {0};
 
-    DeviceIoControl(deviceHandle, IOCTL_HELLO, welcome, (DWORD)strlen(welcome), ReadBuffer, sizeof(ReadBuffer), &dwBytesRead, NULL);
-    INFO("Message received from kerneland : %s", ReadBuffer);
-    INFO("Bytes read : %d", dwBytesRead);
+    // DeviceIoControl(deviceHandle, IOCTL_HELLO, welcome, (DWORD)strlen(welcome), ReadBuffer, sizeof(ReadBuffer), &dwBytesRead, NULL);
+    // INFO("Message received from kerneland : %s", ReadBuffer);
+    // INFO("Bytes read : %d", dwBytesRead);
 
     return rc;
 }
