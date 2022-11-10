@@ -33,7 +33,7 @@ typedef struct PacketCacheItem {
 typedef struct  {
     PacketCacheItem *packets;
     UINT32 maxSize;
-    UINT32 nextPacketID;
+    INT64 nextPacketID; // INT64 so we can easy check for overwrites
     KSPIN_LOCK lock;
 } PacketCache;
 
@@ -132,7 +132,7 @@ uint32_t packetCacheRegister(PacketCache* packetCache, PortmasterPacketInfo *pac
     KLOCK_QUEUE_HANDLE lockHandle = {0};
     KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
 
-    UINT32 packetIndex = getIndexFromPacketID(packetCache, packetCache->nextPacketID);
+    UINT32 packetIndex = getIndexFromPacketID(packetCache, (UINT32)packetCache->nextPacketID);
     PacketCacheItem *newItem = &packetCache->packets[packetIndex];
 
     if(newItem->packetInfo != NULL && newItem->packet != NULL) {
@@ -141,7 +141,7 @@ uint32_t packetCacheRegister(PacketCache* packetCache, PortmasterPacketInfo *pac
         memset(newItem, 0, sizeof(PacketCacheItem));
     }
 
-    newItem->packetID = packetCache->nextPacketID;
+    newItem->packetID = (UINT32)packetCache->nextPacketID;
     newItem->packetInfo = packetInfo;
     newItem->packet = packet;
     newItem->packetLength = packetLength;
@@ -195,15 +195,15 @@ int packetCacheRetrieve(PacketCache *packetCache, UINT32 packetID, PortmasterPac
     int rc = 0;
     KLOCK_QUEUE_HANDLE lockHandle = {0};
     KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
-    PacketCacheItem *item = getPacketFromID(packetCache, packetID);
 
-    // Check if entry was already overwritten
-    bool cacheFilledMoreThenOnce = (packetCache->nextPacketID - 1) > packetCache->maxSize;
-    if(cacheFilledMoreThenOnce && packetID <= (packetCache->nextPacketID - packetCache->maxSize - 1)) {
+    // Check if entry was overwritten
+    if((INT64)packetID <= (packetCache->nextPacketID - (INT64)packetCache->maxSize - 1)) {
         DEBUG("Requested packet was overwritten: %d", packetID);
         rc = 1;
     }
     
+    PacketCacheItem *item = getPacketFromID(packetCache, packetID);
+
     if(rc == 0) {
         if(item != NULL) {
             *packetInfo = item->packetInfo;
@@ -234,9 +234,8 @@ int packetCacheGet(PacketCache *packetCache, uint32_t packetID, void **packet, s
     KLOCK_QUEUE_HANDLE lockHandle = {0};
     KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
 
-    // Check if entry was already overwritten
-    bool cacheFilledMoreThenOnce = (packetCache->nextPacketID - 1) > packetCache->maxSize;
-    if(cacheFilledMoreThenOnce && packetID <= (packetCache->nextPacketID - packetCache->maxSize - 1)) {
+    // Check if entry was overwritten
+    if((INT64)packetID <= (packetCache->nextPacketID - (INT64)packetCache->maxSize - 1)) {
         DEBUG("Requested packet was overwritten: %d", packetID);
         rc = 1;
     }
