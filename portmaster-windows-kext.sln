@@ -5,11 +5,6 @@ VisualStudioVersion = 17.3.32811.315
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "pm_kext", "pm_kext\pm_kext.vcxproj", "{4C60792A-0797-4C9F-AB77-19EB7BD807BB}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "pm_kext_glue_dll", "pm_kext_glue_dll\pm_kext_glue_dll.vcxproj", "{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}"
-	ProjectSection(ProjectDependencies) = postProject
-		{4C60792A-0797-4C9F-AB77-19EB7BD807BB} = {4C60792A-0797-4C9F-AB77-19EB7BD807BB}
-	EndProjectSection
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM64 = Debug|ARM64
@@ -36,18 +31,6 @@ Global
 		{4C60792A-0797-4C9F-AB77-19EB7BD807BB}.Release|x86.ActiveCfg = Release|x64
 		{4C60792A-0797-4C9F-AB77-19EB7BD807BB}.Release|x86.Build.0 = Release|x64
 		{4C60792A-0797-4C9F-AB77-19EB7BD807BB}.Release|x86.Deploy.0 = Release|x64
-		{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}.Debug|ARM64.ActiveCfg = Debug|x64
-		{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}.Debug|ARM64.Build.0 = Debug|x64
-		{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}.Debug|x64.ActiveCfg = Debug|x64
-		{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}.Debug|x64.Build.0 = Debug|x64
-		{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}.Debug|x86.ActiveCfg = Debug|Win32
-		{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}.Debug|x86.Build.0 = Debug|Win32
-		{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}.Release|ARM64.ActiveCfg = Release|x64
-		{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}.Release|ARM64.Build.0 = Release|x64
-		{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}.Release|x64.ActiveCfg = Release|x64
-		{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}.Release|x64.Build.0 = Release|x64
-		{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}.Release|x86.ActiveCfg = Release|Win32
-		{BCAB1843-C5F6-4424-8FC3-2EF60DF3EF8B}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

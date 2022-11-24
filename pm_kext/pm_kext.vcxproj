@@ -163,10 +163,8 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="col\packet_cache.c">
-      <DeploymentContent>false</DeploymentContent>
-    </ClCompile>
-    <ClCompile Include="col\verdict_cache.c" />
+    <ClCompile Include="src\packet_cache.c" />
+    <ClCompile Include="src\verdict_cache.c" />
     <ClCompile Include="src\pm_callouts.c" />
     <ClCompile Include="src\pm_checksum.c" />
     <ClCompile Include="src\pm_debug.c" />
@@ -187,10 +185,10 @@
     <Inf Include="PortmasterKext64.inx" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\include\pm_common.h" />
-    <ClInclude Include="..\include\pm_debug.h" />
-    <ClInclude Include="..\include\pm_debug_dll.h" />
-    <ClInclude Include="..\include\version.h" />
+    <ClInclude Include="include\pm_common.h" />
+    <ClInclude Include="include\pm_debug.h" />
+    <ClInclude Include="include\pm_debug_dll.h" />
+    <ClInclude Include="include\version.h" />
     <ClInclude Include="include\packet_cache.h" />
     <ClInclude Include="include\pm_callouts.h" />
     <ClInclude Include="include\pm_checksum.h" />

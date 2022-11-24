@@ -21,15 +21,12 @@ echo copying files ...
 mkdir %CABDIR%\amd64
 copy %INSTALL_WDDK_AMD64%\pm_kernel64.sys %CABDIR%\amd64\PortmasterKext64.sys
 copy %INSTALL_WDDK_AMD64%\pm_kernel64.pdb %CABDIR%\amd64\PortmasterKext64.pdb
-copy %INSTALL_DLL_AMD64%\pm_kernel_glue.dll %CABDIR%\amd64\PortmasterKext64.dll
 copy %INSTALL_WDDK_AMD64%\PortmasterKext64.inf %CABDIR%\amd64\PortmasterKext64.inf
 
 echo.
 echo =====
 echo removing existing signatures ...
 signtool remove /s %CABDIR%\amd64\PortmasterKext64.sys
-:: signtool remove /s %CABDIR%\amd64\PortmasterKext64.pdb
-:: signtool remove /s %CABDIR%\amd64\PortmasterKext64.dll
 
 echo.
 echo =====
