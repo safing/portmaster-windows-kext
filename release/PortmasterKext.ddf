@@ -22,4 +22,3 @@
 .\PortmasterKext\amd64\PortmasterKext64.inf
 .\PortmasterKext\amd64\PortmasterKext64.sys
 .\PortmasterKext\amd64\PortmasterKext64.pdb
-.\PortmasterKext\amd64\PortmasterKext64.dll

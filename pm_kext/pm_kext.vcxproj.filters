@@ -43,11 +43,11 @@
     <ClCompile Include="src\pm_utils.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="col\verdict_cache.c">
-      <Filter>Source Files\col</Filter>
+    <ClCompile Include="src\verdict_cache.c">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="col\packet_cache.c">
-      <Filter>Source Files\col</Filter>
+    <ClCompile Include="src\packet_cache.c">
+      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\pm_packet.c">
       <Filter>Source Files</Filter>
@@ -91,16 +91,16 @@
     <ClInclude Include="include\verdict_cache.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\pm_common.h">
+    <ClInclude Include="include\pm_common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\pm_debug.h">
+    <ClInclude Include="include\pm_debug.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\pm_debug_dll.h">
+    <ClInclude Include="include\pm_debug_dll.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\version.h">
+    <ClInclude Include="include\version.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\pm_packet.h">

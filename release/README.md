@@ -29,7 +29,6 @@ There version identifier is in the files:
 
         PortmasterKext
         └── amd64
-            ├── PortmasterKext64.dll
             ├── PortmasterKext64.inf
             ├── PortmasterKext64.pdb
             └── PortmasterKext64.sys
@@ -47,8 +46,8 @@ There version identifier is in the files:
 ### Finalize and Add Own Signatures
 
 - Run `release_finalize.bat` to:
-  - copy the signed `.dll` and `.sys` to the Portmaster dist directory
-- Sign the `.dll` and `.sys` files with your EV Code Signing Cert (for additional transparency) [Optional]
+  - copy the signed `.sys` to the Portmaster dist directory
+- Sign the `.sys` files with your EV Code Signing Cert (for additional transparency) [Optional]
 
 # Relevant Documentation
 
