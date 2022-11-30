@@ -25,7 +25,7 @@
  *  8.) If packet_cache is full, first packet will be dropped, so that the lates packet
  *      can be stored.
  *
- *  Credits:     Based on the excelent work of
+ *  Credits:     Based on the excellent work of
  *                   Jared Wright, https://github.com/JaredWright/WFPStarterKit
  *                   Basil, https://github.com/basil00/Divert
  *
@@ -70,7 +70,7 @@ NTSTATUS InitDriverObject(DRIVER_OBJECT *driverObject, UNICODE_STRING *registryP
     WDFDRIVER *driver, WDFDEVICE *device);
 
 // Global IO Queue for communicating
-PRKQUEUE globalIOQueue;
+PRKQUEUE globalIOQueue = NULL;
 static LARGE_INTEGER ioQueueTimeout;
 #define QUEUE_TIMEOUT_MILI 10000
 
@@ -240,6 +240,10 @@ void DriverUnload(PDRIVER_OBJECT driverObject) {
         ERR("Failed to unregister callout, status: 0x%08x", status);
     }
     destroyCalloutStructure();
+    if(globalIOQueue != NULL) {
+        portmasterFree(globalIOQueue);
+        globalIOQueue = NULL;
+    }
 
     freeNetBufferPool();
     // Close handle to the WFP Filter Engine
@@ -282,6 +286,20 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_SUCCESS;
         }
+        case IOCTL_SHUTDOWN_REQUEST: {
+            INFO("Shutdown request received. Preparing for shutdown ...");
+            // Rundown verdict request queue
+            PLIST_ENTRY entries = KeRundownQueue(globalIOQueue);
+            if(entries != NULL) {
+                while(!IsListEmpty(entries)) {
+                    DataEntry *dentry = (DataEntry*)RemoveHeadList(entries);
+                    portmasterFree(dentry);
+                }
+            }
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return STATUS_SUCCESS;
+        }
         case IOCTL_RECV_VERDICT_REQ: {
             DEBUG("IOCTL_RECV_VERDICT_REQ");
             PLIST_ENTRY ple = KeRemoveQueue(
@@ -289,8 +307,8 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
                     KernelMode, //UserMode, //KernelMode,
                     &ioQueueTimeout
                 );
-            //Super ugly, but recommended by MS: Callers of KeRemoveQueue should test
-            //whether its return value is STATUS_TIMEOUT or STATUS_USER_APC before accessing any entry members.
+            // Super ugly, but recommended by MS: Callers of KeRemoveQueue should test
+            // whether its return value is STATUS_TIMEOUT or STATUS_USER_APC before accessing any entry members.
             NTSTATUS rc = (NTSTATUS) ((UINT64) ple);
             if (rc == STATUS_TIMEOUT) {
                 INFO("List was empty -> timeout");
@@ -306,6 +324,13 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
                 IoCompleteRequest(Irp, IO_NO_INCREMENT);
                 return STATUS_USER_APC;
             }
+            if (rc == STATUS_ABANDONED) {
+                INFO("Queue was rundown-> STATUS_ABANDONED");
+                Irp->IoStatus.Status = STATUS_ABANDONED;
+                Irp->IoStatus.Information = 0;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                return STATUS_ABANDONED;
+            }
 
             INFO("Sending VERDICT-REQUEST to userland");
 
@@ -314,13 +339,13 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
                 int size = sizeof(PortmasterPacketInfo);
 
                 RtlZeroMemory(pBuf, pIoStackLocation->Parameters.DeviceIoControl.InputBufferLength);
-                //Copy message from kernel to pBuf, so that it can be evaluated in userland
+                // Copy message from kernel to pBuf, so that it can be evaluated in userland
                 RtlCopyMemory(pBuf, dentry->packet, size);
                 Irp->IoStatus.Status = STATUS_SUCCESS;
                 Irp->IoStatus.Information = size;
-                IoCompleteRequest(Irp,IO_NO_INCREMENT);
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-                //Now that the contents of the list-entry is copied, free memory
+                // Now that the contents of the list-entry is copied, free memory
                 portmasterFree(dentry);
                 return STATUS_SUCCESS;
             }
