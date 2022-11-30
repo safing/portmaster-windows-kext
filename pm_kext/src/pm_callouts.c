@@ -54,14 +54,38 @@ NTSTATUS initCalloutStructure() {
     return STATUS_SUCCESS;
 }
 
+// Used for freeing the packet info memory when clearing the packet cache
+static void freePacketInfo(PortmasterPacketInfo *info, verdict_t verdict) {
+    UNREFERENCED_PARAMETER(verdict);
+    if(info != NULL) {
+        portmasterFree(info);
+    }
+}
+
+static void freePacketInfoAndData(PortmasterPacketInfo *info, void *data) {
+    if(info != NULL && data != NULL) {
+        portmasterFree(info);
+        portmasterFree(data);
+    }
+}
+
 void destroyCalloutStructure() {
     destroyInjectHandles();
+    
+    verdictCacheTeardown(verdictCacheV4, freePacketInfo);
+    verdictCacheTeardown(verdictCacheV6, freePacketInfo);
+
+    verdictCacheV4 = NULL;
+    verdictCacheV6 = NULL;
+
+    packetCacheTeardown(packetCache, freePacketInfoAndData);
+    packetCache = NULL;
 }
 
 NTSTATUS genericNotify(
     FWPS_CALLOUT_NOTIFY_TYPE notifyType,
     const GUID * filterKey,
-    const FWPS_FILTER * filter) {
+    FWPS_FILTER * filter) {
 
     UNREFERENCED_PARAMETER(filterKey);
     UNREFERENCED_PARAMETER(filter);
@@ -77,11 +101,10 @@ NTSTATUS genericNotify(
     return STATUS_SUCCESS;
 }
 
-NTSTATUS genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext) {
+void genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext) {
     UNREFERENCED_PARAMETER(layerId);
     UNREFERENCED_PARAMETER(calloutId);
     UNREFERENCED_PARAMETER(flowContext);
-    return STATUS_SUCCESS;
 }
 
 void respondWithVerdict(UINT32 id, verdict_t verdict) {
@@ -247,9 +270,9 @@ FWP_ACTION_TYPE classifySingle(
     bool copiedNBForPacketInfo = false;
     size_t dataLength = 0;
     void *data = NULL;
-    status = borrowPacketDataFromNB(nb, ipHeaderSize + 4, &data);
+    status = borrowPacketDataFromNB(nb, (size_t)ipHeaderSize + 4, &data);
     if (!NT_SUCCESS(status)) {
-        size_t reqBytes = ipHeaderSize + 4;
+        size_t reqBytes = (size_t)ipHeaderSize + 4;
         INFO("borrowPacketDataFromNB could not return IPHeader+4B, status=0x%X -> copyPacketDataFromNB", status);
         // TODO: if we start to use copyPacketDataFromNB here, free space afterwards!
         status = copyPacketDataFromNB(nb, reqBytes, &data, &dataLength);
@@ -705,7 +728,7 @@ void classifyInboundIPv4(
     const FWPS_INCOMING_VALUES* inFixedValues,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
-    void* classifyContext,
+    const void* classifyContext,
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
@@ -755,7 +778,7 @@ void classifyOutboundIPv4(
     const FWPS_INCOMING_VALUES* inFixedValues,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
-    void* classifyContext,
+    const void* classifyContext,
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
@@ -804,7 +827,7 @@ void classifyInboundIPv6(
     const FWPS_INCOMING_VALUES* inFixedValues,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
-    void* classifyContext,
+    const void* classifyContext,
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
@@ -865,7 +888,7 @@ void classifyOutboundIPv6(
     const FWPS_INCOMING_VALUES* inFixedValues,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
-    void* classifyContext,
+    const void* classifyContext,
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
@@ -924,21 +947,6 @@ void classifyOutboundIPv6(
     classifyMultiple(&outboundV6PacketInfo, verdictCacheV6, inMetaValues, layerData, classifyOut);
 }
 
-// Used for freeing the packet info memory when clearing the packet cache
-static void freePacketInfo(PortmasterPacketInfo *info, verdict_t verdict) {
-    UNREFERENCED_PARAMETER(verdict);
-    if(info != NULL) {
-        portmasterFree(info);
-    }
-}
-
-static void freePacketInfoAndData(PortmasterPacketInfo *info, void *data) {
-    if(info != NULL && data != NULL) {
-        portmasterFree(info);
-        portmasterFree(data);
-    }
-}
-
 void clearCache() {
     INFO("Cleaning all verdict cache");
 
@@ -949,15 +957,4 @@ void clearCache() {
     // Clear IPv6 verdict cache
     // freePacketInfo will free the packet info stored in every item of the cache
     verdictCacheClear(verdictCacheV6, freePacketInfo);
-}
-
-void teardownCache() {
-    verdictCacheTeardown(verdictCacheV4, freePacketInfo);
-    verdictCacheTeardown(verdictCacheV6, freePacketInfo);
-
-    verdictCacheV4 = NULL;
-    verdictCacheV6 = NULL;
-
-    packetCacheTeardown(packetCache, freePacketInfoAndData);
-    packetCache = NULL;
 }

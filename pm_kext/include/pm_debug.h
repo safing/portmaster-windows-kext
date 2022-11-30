@@ -68,6 +68,6 @@ extern int logLevel;  //must be defined in dll and kernel object
     #define initDebugStructure() {}
 #endif
 
-#define FORMAT_ADDR(x) (x>>24)&0xFF, (x>>16)&0xFF, (x>>8)&0xFF, x&0xFF
+#define FORMAT_ADDR(x) (INT16)((x>>24)&0xFF), (INT16)((x>>16)&0xFF), (INT16)((x>>8)&0xFF), (INT16)(x&0xFF)
 
 #endif //Include Guard
