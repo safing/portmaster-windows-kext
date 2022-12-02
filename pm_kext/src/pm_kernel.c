@@ -86,79 +86,83 @@ static LARGE_INTEGER ioQueueTimeout;
 // If FwpmTransactionCommit() and FwpmTransactionAbort() fail there is noting else to do to release the lock.
 #pragma warning( disable : 26165) // warning C26165: Possibly failing to release lock
 NTSTATUS DriverEntry(IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING registryPath) {
+    NTSTATUS status = STATUS_SUCCESS;
+    WDFDRIVER driver = { 0 };
+    WDFDEVICE device = { 0 };
+    DEVICE_OBJECT * wdmDevice = NULL;
+    FWPM_SESSION wdfSession = { 0 };
+    bool inTransaction = false;
+    bool calloutRegistered = false;
+    
     initDebugStructure();
 
     INFO("Trying to load Kernel Object '%ls', Compile date: %s %s", PORTMASTER_DEVICE_NAME, __DATE__, __TIME__);
     INFO("PM_PACKET_CACHE_SIZE = %d, PM_VERDICT_CACHE_SIZE= %d", PM_PACKET_CACHE_SIZE, PM_VERDICT_CACHE_SIZE);
-    NTSTATUS status = initCalloutStructure();
+    status = initCalloutStructure();
     if (!NT_SUCCESS(status)) {
         status = STATUS_FAILED_DRIVER_ENTRY;
+        goto Exit;
     }
 
-    if(NT_SUCCESS(status)) { 
-        status = initNetBufferPool();
+    status = initNetBufferPool();
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
     }
 
-    WDFDRIVER driver = { 0 };
-    WDFDEVICE device = { 0 };
-    if(NT_SUCCESS(status)) {
-        status = InitDriverObject(driverObject, registryPath, &driver, &device);
+    status = InitDriverObject(driverObject, registryPath, &driver, &device);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
     }
 
-    FWPM_SESSION wdfSession = { 0 };
-    if(NT_SUCCESS(status)) {
-        // to the filter engine in the context of a 'transaction'
-        // Begin a transaction to the FilterEngine. You must register objects (filter, callouts, sublayers)
-        wdfSession.flags = FWPM_SESSION_FLAG_DYNAMIC;  // <-- Automatically destroys all filters and callouts after this wdfSession ends
-        status = FwpmEngineOpen(NULL, RPC_C_AUTHN_WINNT, NULL, &wdfSession, &filterEngineHandle);
+    // Begin a transaction to the FilterEngine. You must register objects (filter, callouts, sublayers)
+    //to the filter engine in the context of a 'transaction'
+    wdfSession.flags = FWPM_SESSION_FLAG_DYNAMIC;  // <-- Automatically destroys all filters and callouts after this wdfSession ends
+    status = FwpmEngineOpen(NULL, RPC_C_AUTHN_WINNT, NULL, &wdfSession, &filterEngineHandle);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
     }
-
-    // Begin transaction.
-    bool inTransaction = false;
-    if(NT_SUCCESS(status)) {
-        status = FwpmTransactionBegin(filterEngineHandle, 0);
-        inTransaction = NT_SUCCESS(status);
+    status = FwpmTransactionBegin(filterEngineHandle, 0);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
     }
+    inTransaction = true;
 
-    // Register the all Portmaster Callouts and Filters to the filter engine.
-    bool calloutRegistered = false;
-    if(NT_SUCCESS(status)) {
-        DEVICE_OBJECT *wdmDevice = WdfDeviceWdmGetDeviceObject(device);
-        status = registerWFPStack(wdmDevice);
-        calloutRegistered = NT_SUCCESS(status);
+    // Register the all Portmaster Callouts and Filters to the filter engine
+    wdmDevice = WdfDeviceWdmGetDeviceObject(device);
+    status = registerWFPStack(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
     }
+    calloutRegistered = true;
 
-    // Commit transaction to the Filter Engine.
-    if(NT_SUCCESS(status)) {
-        status = FwpmTransactionCommit(filterEngineHandle);
-        inTransaction = false;
+    // Commit transaction to the Filter Engine
+    status = FwpmTransactionCommit(filterEngineHandle);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
     }
+    inTransaction = false;
 
-    // Abort transaction if it failed to commit.
-    if(inTransaction) {
-        (void) FwpmTransactionAbort(filterEngineHandle);
-        inTransaction = false;
-    }
+    // Define this driver's unload function
+    driverObject->DriverUnload = DriverUnload;
 
-    if(NT_SUCCESS(status)) {
-        // Define this driver's unload function
-        driverObject->DriverUnload = DriverUnload;
+    // Define IO Control via WDDK's IO Request Packet structure
+    driverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = driverDeviceControl;
 
-        // Define IO Control via WDDK's IO Request Packet structure
-        driverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = driverDeviceControl;
-    }
 
-    // Print status and cleanup if there was failure
-    if (NT_SUCCESS(status)) {
-        WARN("--- Portmaster Kernel Extension loaded successfully ---");
-    } else {
+    // Cleanup and handle any errors
+Exit:
+    if (!NT_SUCCESS(status)) {
         ERR("Portmaster Kernel Extension failed to load, status 0x%08x", status);
-        status = STATUS_FAILED_DRIVER_ENTRY;
-
-        if(calloutRegistered) {
+        if (inTransaction == true) {
+            FwpmTransactionAbort(filterEngineHandle);
+            //_Analysis_assume_lock_not_held_(filterEngineHandle); // Potential leak if "FwpmTransactionAbort" fails
+        }
+        if (calloutRegistered == true) {
             unregisterCallouts();
         }
-
+        status = STATUS_FAILED_DRIVER_ENTRY;
+    } else {
+        WARN("--- Portmaster Kernel Extension loaded successfully ---");
     }
 
     return status;
