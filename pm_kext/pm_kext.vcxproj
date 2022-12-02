@@ -99,6 +99,10 @@
     <OutDir>$(SolutionDir)install\WDDK\$(Platform)\$(ConfigurationName)\</OutDir>
     <TargetName>pm_kernel64</TargetName>
     <EnableInf2cat>false</EnableInf2cat>
+    <RunCodeAnalysis>true</RunCodeAnalysis>
+    <EnableClangTidyCodeAnalysis>false</EnableClangTidyCodeAnalysis>
+    <EnableMicrosoftCodeAnalysis>true</EnableMicrosoftCodeAnalysis>
+    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
@@ -116,6 +120,7 @@
       <LanguageStandard_C>stdc11</LanguageStandard_C>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;PM_VERSION_MAJOR=$(PM_VERSION_MAJOR);PM_VERSION_MINOR=$(PM_VERSION_MINOR);PM_VERSION_REVISION=$(PM_VERSION_REVISION);PM_VERSION_BUILD=$(PM_VERSION_BUILD);DEBUG_ON;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <UseFullPaths>false</UseFullPaths>
+      <EnablePREfast>true</EnablePREfast>
     </ClCompile>
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\wdmsec.lib;$(DDK_LIB_PATH)\ndis.lib;$(DDK_LIB_PATH)\fwpkclnt.lib;$(SDK_LIB_PATH)\uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>

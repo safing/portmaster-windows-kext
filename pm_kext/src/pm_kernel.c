@@ -32,6 +32,8 @@
  *  Scope:       Kernelmode
  */
 
+#include <stdlib.h>
+
 #include "pm_kernel.h"
 #include "pm_utils.h"
 #define LOGGER_NAME "pm_kernel"
@@ -62,8 +64,8 @@ DRIVER_UNLOAD DriverUnload;
 EVT_WDF_DRIVER_UNLOAD emptyEventUnload;
 
 //IO CTL
+_IRQL_requires_max_(APC_LEVEL)
 __drv_dispatchType(IRP_MJ_DEVICE_CONTROL) DRIVER_DISPATCH driverDeviceControl;
-NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT  pDeviceObject, __inout PIRP Irp);
 
 // Initializes required WDFDriver and WDFDevice objects
 NTSTATUS InitDriverObject(DRIVER_OBJECT *driverObject, UNICODE_STRING *registryPath,
@@ -78,6 +80,11 @@ static LARGE_INTEGER ioQueueTimeout;
 /************************************
    Kernel API Functions
 ************************************/
+#pragma warning( push )
+// Always disable while making changes to this function!
+// FwpmTransactionAbort may fail this will leave filterEngineHandle in locked state. 
+// If FwpmTransactionCommit() and FwpmTransactionAbort() fail there is noting else to do to release the lock.
+#pragma warning( disable : 26165) // warning C26165: Possibly failing to release lock
 NTSTATUS DriverEntry(IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING registryPath) {
     NTSTATUS status = STATUS_SUCCESS;
     WDFDRIVER driver = { 0 };
@@ -160,6 +167,7 @@ Exit:
 
     return status;
 }
+#pragma warning( pop ) 
 
 NTSTATUS InitDriverObject(DRIVER_OBJECT * driverObject, UNICODE_STRING * registryPath, WDFDRIVER * driver, WDFDEVICE * device) {
     static const long n100nsTimeCount = 1000 * QUEUE_TIMEOUT_MILI;  //Unit 100ns -> 1s
@@ -190,8 +198,8 @@ NTSTATUS InitDriverObject(DRIVER_OBJECT * driverObject, UNICODE_STRING * registr
     // Configure the WDFDEVICE_INIT with a name to allow for access from user mode
     WdfDeviceInitSetDeviceType(deviceInit, FILE_DEVICE_NETWORK);
     WdfDeviceInitSetCharacteristics(deviceInit, FILE_DEVICE_SECURE_OPEN, false);
-    WdfDeviceInitAssignName(deviceInit, &deviceName);
-    WdfPdoInitAssignRawDevice(deviceInit, &GUID_DEVCLASS_NET);
+    (void) WdfDeviceInitAssignName(deviceInit, &deviceName);
+    (void) WdfPdoInitAssignRawDevice(deviceInit, &GUID_DEVCLASS_NET);
     WdfDeviceInitSetDeviceClass(deviceInit, &GUID_DEVCLASS_NET);
 
     status = WdfDeviceCreate(&deviceInit, WDF_NO_OBJECT_ATTRIBUTES, device);
@@ -205,7 +213,7 @@ NTSTATUS InitDriverObject(DRIVER_OBJECT * driverObject, UNICODE_STRING * registr
         goto Exit;
     }
     // Initialize a WDF-Queue to transmit questionable packets to userland
-    ioQueueTimeout.QuadPart = -1 * n100nsTimeCount;
+    ioQueueTimeout.QuadPart = -1LL * n100nsTimeCount;
     globalIOQueue = portmasterMalloc(sizeof(KQUEUE), false);
     if (globalIOQueue == NULL) {
         ERR("Space for Queue could not be allocated (why?)");
@@ -239,6 +247,7 @@ void DriverUnload(PDRIVER_OBJECT driverObject) {
     if (!NT_SUCCESS(status)) {
         ERR("Failed to unregister callout, status: 0x%08x", status);
     }
+    
     destroyCalloutStructure();
     if(globalIOQueue != NULL) {
         portmasterFree(globalIOQueue);
@@ -247,11 +256,10 @@ void DriverUnload(PDRIVER_OBJECT driverObject) {
 
     freeNetBufferPool();
     // Close handle to the WFP Filter Engine
-    if (filterEngineHandle) {
+    if (filterEngineHandle != NULL) {
         FwpmEngineClose(filterEngineHandle);
         filterEngineHandle = NULL;
     }
-    teardownCache();
 
     RtlInitUnicodeString(&symlink, PORTMASTER_DOS_DEVICE_STRING);
     IoDeleteSymbolicLink(&symlink);
@@ -356,7 +364,7 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
             verdict_t verdict = verdictInfo->verdict;
 
             const char *verdictName = NULL;
-            if (abs(verdict) < sizeof(VERDICT_NAMES)) {
+            if ((size_t)abs(verdict) < sizeof(VERDICT_NAMES)) {
                 verdictName = VERDICT_NAMES[abs(verdict)];
             } else {
                 verdictName = "UNDEFINED";

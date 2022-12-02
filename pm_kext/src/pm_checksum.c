@@ -20,7 +20,7 @@ static UINT32 checksumAdd(void* data, size_t length) {
     UINT32 sum = 0;
     
     // sum two bytes at once
-    for (int i = 0; i < length16; i++) {
+    for (size_t i = 0; i < length16; i++) {
         // fprintf(stderr, "adding: 0x%x\n", data16[i]);
         sum += data16[i];
     }
@@ -173,7 +173,7 @@ size_t calcIPv4HeaderSize(void* data, size_t length) {
     if (length >= 20) {
         // calc IPv4 Header length
         IPv4Header *ipHeader = (IPv4Header*) data;
-        size_t ipHeaderLength = ipHeader->HdrLength * 4;
+        size_t ipHeaderLength = (size_t)ipHeader->HdrLength * 4;
         if (length < ipHeaderLength) {
             WARN("Invalid Packet len=%u, ipHeaderLength=%u, ipHeader->HdrLength=0x%X", length, ipHeaderLength, ipHeader->HdrLength);
             return 0;
@@ -198,7 +198,7 @@ size_t calcIPv6HeaderSize(void* data, size_t length, UINT8* returnProtocol) {
         UINT8 *data8 = (UINT8*) data;
         UINT8 protocol;
 
-        if (length < ipHeaderLength) {
+        if (length < (size_t)ipHeaderLength) {
             return 0;
         }
         protocol = ipHeader->NextHdr;
@@ -216,12 +216,12 @@ size_t calcIPv6HeaderSize(void* data, size_t length, UINT8* returnProtocol) {
                 case 140:
                 case 253:
                 case 254:
-                    if (length < ipHeaderLength + 8) {
+                    if (length < (size_t)ipHeaderLength + 8) {
                         return 0;
                     }
                     protocol = data8[ipHeaderLength];
                     ipHeaderLength += 8 + data8[ipHeaderLength + 1] * 8;
-                    if (length < ipHeaderLength) {
+                    if (length < (size_t)ipHeaderLength) {
                         return 0;
                     }
                     break;

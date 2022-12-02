@@ -59,9 +59,9 @@ void classifyOutboundIPv6(
 NTSTATUS genericNotify(
     FWPS_CALLOUT_NOTIFY_TYPE notifyType,
     const GUID * filterKey,
-    const FWPS_FILTER * filter);
+    FWPS_FILTER * filter);
 
-NTSTATUS genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext);
+void genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext);
 
 void respondWithVerdict(UINT32 id, verdict_t verdict);
 PacketCache* getPacketCache();
@@ -69,6 +69,5 @@ int updateVerdict(VerdictUpdateInfo*);
 
 
 void clearCache();
-void teardownCache();
 
 #endif // PM_CALLOUTS_H

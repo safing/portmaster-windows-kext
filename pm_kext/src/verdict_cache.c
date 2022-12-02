@@ -66,6 +66,24 @@ typedef struct {
 // Holds the number of accesses/modifications performed on the cache
 static UINT64 cacheAccessCounter = 0;
 
+static bool isKeyZero(VerdictCacheKey *key) {
+    for(size_t i = 0; i < 4; i++) {
+        if(key->localIP[i] != 0) {
+            return false;
+        }
+    }
+
+    for(size_t i = 0; i < 4; i++) {
+        if(key->remoteIP[i] != 0) {
+            return false;
+        }
+    }
+
+   return key->localPort  == 0 &&
+          key->remotePort == 0 &&
+          key->protocol   == 0;
+}
+
 static VerdictCacheKey getCacheKey(PortmasterPacketInfo *info) {
     VerdictCacheKey key = {0};
     memcpy(key.localIP, info->localIP, sizeof(UINT32) * 4);
@@ -198,7 +216,7 @@ static VerdictCacheItem *getOldestAccessTimeItem(VerdictCache *verdictCache) {
 static void resetItem(VerdictCache *verdictCache, VerdictCacheItem *item) {
     HASH_DELETE(hh, verdictCache->map, item);
     // Delete redirect only if the item is in the map
-    if(item->hhRedirect.key != NULL) { 
+    if(!isKeyZero(&item->redirectKey)) { 
         HASH_DELETE(hhRedirect, verdictCache->mapRedirect, item);
     }
     memset(item, 0, sizeof(VerdictCacheItem));
@@ -210,8 +228,9 @@ static void verdictCacheUpdateFromItem(VerdictCache *verdictCache, VerdictCacheI
     if(oldVerdict != newVerdict) {
         // Remove old redirect
         if(oldVerdict == PORTMASTER_VERDICT_REDIR_DNS || oldVerdict == PORTMASTER_VERDICT_REDIR_TUNNEL) {
-            if(item->hhRedirect.key != NULL) { 
+            if(!isKeyZero(&item->redirectKey)) { 
                 HASH_DELETE(hhRedirect, verdictCache->mapRedirect, item);
+                memset(&item->hhRedirect, 0, sizeof(UT_hash_handle));
             }
             memset(&item->redirectKey, 0, sizeof(VerdictCacheKey));
         }
