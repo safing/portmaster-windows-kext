@@ -159,18 +159,6 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING registry
             unregisterCallouts();
         }
 
-        if (filterEngineHandle != NULL) {
-            FwpmEngineClose(filterEngineHandle);
-            filterEngineHandle = NULL;
-        }
-
-        destroyCalloutStructure();
-        if(globalIOQueue != NULL) {
-            portmasterFree(globalIOQueue);
-            globalIOQueue = NULL;
-        }
-
-        freeNetBufferPool();
     }
 
     return status;

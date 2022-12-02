@@ -30,11 +30,11 @@ typedef struct PacketCacheItem {
 } PacketCacheItem;
 
 #undef PacketCache // previously defined as void
-typedef struct  {
+typedef struct {
     PacketCacheItem *packets;
     UINT32 maxSize;
     INT64 nextPacketID; // INT64 so we can easy check for overwrites
-    KSPIN_LOCK lock;
+    PKSPIN_LOCK lock;
 } PacketCache;
 
 /**
@@ -78,7 +78,8 @@ int packetCacheCreate(uint32_t maxSize, PacketCache **packetCache) {
     newPacketCache->nextPacketID = 1;
     newPacketCache->maxSize = maxSize;
 
-    KeInitializeSpinLock(&newPacketCache->lock);
+    newPacketCache->lock = portmasterMalloc(sizeof(KSPIN_LOCK), false);
+    KeInitializeSpinLock(newPacketCache->lock);
 
     *packetCache = newPacketCache;
     return 0;
@@ -96,8 +97,9 @@ int packetCacheTeardown(PacketCache *packetCache, void(*freeData)(PortmasterPack
         return 0;
     }
 
+    PKSPIN_LOCK lock = packetCache->lock;
     KLOCK_QUEUE_HANDLE lockHandle = {0};
-    KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
+    KeAcquireInStackQueuedSpinLock(lock, &lockHandle);
 
     for(UINT32 i = 0; i < packetCache->maxSize; i++) {
         PacketCacheItem *item = &packetCache->packets[i];
@@ -108,8 +110,10 @@ int packetCacheTeardown(PacketCache *packetCache, void(*freeData)(PortmasterPack
     
     portmasterFree(packetCache->packets);
     portmasterFree(packetCache);
-
+    
     KeReleaseInStackQueuedSpinLock(&lockHandle);
+    portmasterFree(lock);
+
     return 0;
 }
 
@@ -130,7 +134,7 @@ uint32_t packetCacheRegister(PacketCache* packetCache, PortmasterPacketInfo *pac
     }
 
     KLOCK_QUEUE_HANDLE lockHandle = {0};
-    KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
+    KeAcquireInStackQueuedSpinLock(packetCache->lock, &lockHandle);
 
     UINT32 packetIndex = getIndexFromPacketID(packetCache, (UINT32)packetCache->nextPacketID);
     PacketCacheItem *newItem = &packetCache->packets[packetIndex];
@@ -194,7 +198,7 @@ int packetCacheRetrieve(PacketCache *packetCache, UINT32 packetID, PortmasterPac
 
     int rc = 0;
     KLOCK_QUEUE_HANDLE lockHandle = {0};
-    KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
+    KeAcquireInStackQueuedSpinLock(packetCache->lock, &lockHandle);
 
     // Check if entry was overwritten
     if((INT64)packetID <= (packetCache->nextPacketID - (INT64)packetCache->maxSize - 1)) {
@@ -232,7 +236,7 @@ int packetCacheGet(PacketCache *packetCache, uint32_t packetID, void **packet, s
     DEBUG("packetCacheGet called");
     int rc = 0;
     KLOCK_QUEUE_HANDLE lockHandle = {0};
-    KeAcquireInStackQueuedSpinLock(&packetCache->lock, &lockHandle);
+    KeAcquireInStackQueuedSpinLock(packetCache->lock, &lockHandle);
 
     // Check if entry was overwritten
     if((INT64)packetID <= (packetCache->nextPacketID - (INT64)packetCache->maxSize - 1)) {
