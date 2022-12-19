@@ -238,8 +238,14 @@ static void verdictCacheUpdateFromItem(VerdictCache *verdictCache, VerdictCacheI
         // Set new verdict and create redirect if needed
         item->verdict = newVerdict;
         if(newVerdict == PORTMASTER_VERDICT_REDIR_DNS || newVerdict == PORTMASTER_VERDICT_REDIR_TUNNEL) {
-            item->redirectKey = getCacheRedirectKey(item->packetInfo);
-            HASH_ADD(hhRedirect, verdictCache->mapRedirect, redirectKey, sizeof(VerdictCacheKey), item);
+            VerdictCacheKey redirectKey = getCacheRedirectKey(item->packetInfo);
+
+            VerdictCacheItem *redirectItem = NULL;
+            HASH_FIND(hhRedirect, verdictCache->mapRedirect, &redirectKey, sizeof(VerdictCacheKey), redirectItem);
+            if(redirectItem == NULL) {
+                item->redirectKey = redirectKey;
+                HASH_ADD(hhRedirect, verdictCache->mapRedirect, redirectKey, sizeof(VerdictCacheKey), item);
+            }
         }
 
         INFO("verdictCacheUpdate verdict updated %s: %d -> %d", printPacketInfo(item->packetInfo), oldVerdict, newVerdict);
@@ -347,11 +353,13 @@ int verdictCacheAdd(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo
 
         // Add to redirect map if needed
         if(verdict == PORTMASTER_VERDICT_REDIR_DNS || verdict == PORTMASTER_VERDICT_REDIR_TUNNEL) {
-            newItem->redirectKey = getCacheRedirectKey(packetInfo);
+            VerdictCacheKey redirectKey = getCacheRedirectKey(packetInfo);
+
             // insert only if we dont have already item with the same key
             VerdictCacheItem *redirectItem = NULL;
-            HASH_FIND(hhRedirect, verdictCache->mapRedirect, &newItem->redirectKey, sizeof(VerdictCacheKey), redirectItem);
+            HASH_FIND(hhRedirect, verdictCache->mapRedirect, &redirectKey, sizeof(VerdictCacheKey), redirectItem);
             if(redirectItem == NULL) {
+                newItem->redirectKey = redirectKey;
                 HASH_ADD(hhRedirect, verdictCache->mapRedirect, redirectKey, sizeof(VerdictCacheKey), newItem);
             }
         }
