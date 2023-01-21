@@ -36,7 +36,7 @@ typedef UINT64 uint64_t;
  * @return error code
  *
  */
-int verdictCacheCreate(UINT32 maxSize, VerdictCache **verdict_cache);
+extern int verdictCacheCreate(UINT32 maxSize, VerdictCache **verdict_cache);
 
 /**
  * @brief Remove all items from verdict cache
@@ -45,7 +45,7 @@ int verdictCacheCreate(UINT32 maxSize, VerdictCache **verdict_cache);
  * @par    freeData = callback function that is executed for each item before delete were the data of the item can be deleted
  *
  */
-void verdictCacheClear(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t));
+extern void verdictCacheClear(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t));
 
 /**
  * @brief Tears down the verdict cache
@@ -54,7 +54,7 @@ void verdictCacheClear(VerdictCache *verdictCache, void(*freeData)(PortmasterPac
  * @return error code
  *
  */
-int verdictCacheTeardown(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t));
+extern int verdictCacheTeardown(VerdictCache *verdictCache, void(*freeData)(PortmasterPacketInfo*, verdict_t));
 
 /**
  * @brief Updates a verdict that is already in the cache
@@ -64,7 +64,7 @@ int verdictCacheTeardown(VerdictCache *verdictCache, void(*freeData)(PortmasterP
  * @return error code
  *
  */
-int verdictCacheUpdate(VerdictCache *verdictCache, VerdictUpdateInfo *info);
+extern int verdictCacheUpdate(VerdictCache *verdictCache, VerdictUpdateInfo *info);
 
 /**
  * @brief Adds verdict to cache
@@ -75,7 +75,7 @@ int verdictCacheUpdate(VerdictCache *verdictCache, VerdictUpdateInfo *info);
  * @return error code
  *
  */
-int verdictCacheAdd(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, verdict_t verdict, PortmasterPacketInfo **removedPacketInfo);
+extern int verdictCacheAdd(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, verdict_t verdict, PortmasterPacketInfo **removedPacketInfo);
 
 
 /**
@@ -88,5 +88,5 @@ int verdictCacheAdd(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo
  * @return error code
  *
  */
-verdict_t verdictCacheGet(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, PortmasterPacketInfo **redirInfo);
+extern verdict_t verdictCacheGet(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, PortmasterPacketInfo **redirInfo);
 #endif // VERDICT_CACHE_H

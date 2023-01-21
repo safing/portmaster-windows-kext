@@ -32,7 +32,7 @@
  * @return error code
  *
  */
-int packetCacheCreate(uint32_t maxSize, PacketCache **packetCache);
+extern int packetCacheCreate(uint32_t maxSize, PacketCache **packetCache);
 
 /**
  * @brief Tears down the packet cache
@@ -41,7 +41,7 @@ int packetCacheCreate(uint32_t maxSize, PacketCache **packetCache);
  * @return error code
  *
  */
-int packetCacheTeardown(PacketCache *packetCache, void(*freeData)(PortmasterPacketInfo*, void*));
+extern int packetCacheTeardown(PacketCache *packetCache, void(*freeData)(PortmasterPacketInfo*, void*));
 
 /**
  * @brief Registers a packet
@@ -52,7 +52,7 @@ int packetCacheTeardown(PacketCache *packetCache, void(*freeData)(PortmasterPack
  * @return new packet ID
  *
  */
-uint32_t packetCacheRegister(PacketCache *packetCache, PortmasterPacketInfo *packetInfo, void *packet, size_t packetLength, PortmasterPacketInfo **oldPacketInfo, void **oldPacket);
+extern uint32_t packetCacheRegister(PacketCache *packetCache, PortmasterPacketInfo *packetInfo, void *packet, size_t packetLength, PortmasterPacketInfo **oldPacketInfo, void **oldPacket);
 
 /**
  * @brief Retrieves and deletes a packet from list, if it exists.
@@ -64,7 +64,7 @@ uint32_t packetCacheRegister(PacketCache *packetCache, PortmasterPacketInfo *pac
  * @return error code
  *
  */
-int packetCacheRetrieve(PacketCache *packetCache, uint32_t packetID, PortmasterPacketInfo **packetInfoPtr, void **packet, size_t *packetLength);
+extern int packetCacheRetrieve(PacketCache *packetCache, uint32_t packetID, PortmasterPacketInfo **packetInfoPtr, void **packet, size_t *packetLength);
 
 /**
  * @brief Retrieves a packet from list, if it exists.
@@ -75,6 +75,6 @@ int packetCacheRetrieve(PacketCache *packetCache, uint32_t packetID, PortmasterP
  * @return error code
  *
  */
-int packetCacheGet(PacketCache *packetCache, uint32_t packetID, void **packet, size_t *packetLength);
+extern int packetCacheGet(PacketCache *packetCache, uint32_t packetID, void **packet, size_t *packetLength);
 
 #endif
