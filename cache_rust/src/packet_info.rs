@@ -2,7 +2,7 @@
 use core::fmt::Debug;
 use alloc::format;
 
-use crate::packet_key::Key;
+use crate::cache::packet_key::Key;
 
 #[repr(C)]
 #[allow(dead_code)]
@@ -52,5 +52,9 @@ impl PortmasterPacketInfo {
             remote_ip: self.local_ip,
             remote_port: 0, 
             protocol: self.protocol }
+    }
+
+    pub fn is_ipv6(&self) -> bool {
+        return self.ip_v6 == 1;
     }
 }

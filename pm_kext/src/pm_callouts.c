@@ -24,30 +24,14 @@
 /******************************************************************
  * Global (static) data structures
  ******************************************************************/
-static VerdictCache *verdictCacheV4;
-static VerdictCache *verdictCacheV6;
-
-static PacketCache *packetCache = NULL;
-
+extern void initCache();
+extern void clearCache();
 /******************************************************************
  * Helper Functions
  ******************************************************************/
 
 NTSTATUS initCalloutStructure() {
-    int rc = verdictCacheCreate(PM_VERDICT_CACHE_SIZE, &verdictCacheV4);
-    if (rc != 0) {
-        return STATUS_INTERNAL_ERROR;
-    }
-
-    rc = verdictCacheCreate(PM_VERDICT_CACHE_SIZE, &verdictCacheV6);
-    if (rc != 0) {
-        return STATUS_INTERNAL_ERROR;
-    }
-
-    rc = packetCacheCreate(PM_PACKET_CACHE_SIZE, &packetCache);
-    if (rc != 0) {
-        return STATUS_INTERNAL_ERROR;
-    }
+    initCache();
 
     initializeInjectHandles();
 
@@ -71,15 +55,7 @@ static void freePacketInfoAndData(PortmasterPacketInfo *info, void *data) {
 
 void destroyCalloutStructure() {
     destroyInjectHandles();
-    
-    verdictCacheTeardown(verdictCacheV4, freePacketInfo);
-    verdictCacheTeardown(verdictCacheV6, freePacketInfo);
-
-    verdictCacheV4 = NULL;
-    verdictCacheV6 = NULL;
-
-    packetCacheTeardown(packetCache, freePacketInfoAndData);
-    packetCache = NULL;
+    clearCache();
 }
 
 NTSTATUS genericNotify(
@@ -107,90 +83,7 @@ void genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext) {
     UNREFERENCED_PARAMETER(flowContext);
 }
 
-void respondWithVerdict(UINT32 id, verdict_t verdict) {
-    // sanity check
-    if (id == 0 || verdict == 0) {
-        ERR("Invalid parameters");
-        return;
-    }
-
-    bool temporary = false;
-    if (verdict < 0) {
-        temporary = true;
-        verdict = verdict * -1;
-    }
-
-    INFO("Trying to retrieve packet");
-
-
-    PortmasterPacketInfo *packetInfo = NULL;
-    void *packet = NULL;
-    size_t packetLength = 0;
-    int rc = packetCacheRetrieve(packetCache, id, &packetInfo, &packet, &packetLength);
-   
-    if (rc != 0) {
-        // packet id was not in packet cache
-        INFO("received verdict response for unknown packet id: %u", id);
-        return;
-    }
-    INFO("received verdict response for packet id: %u", id);
-
-    //Store permanent verdicts in verdictCache
-    if (!temporary) {
-        VerdictCache *verdictCache = verdictCacheV4;
-
-        // Switch to IPv6 cache and lock if needed.
-        if (packetInfo->ipV6) {
-            verdictCache = verdictCacheV6;
-        }
-
-        // Add to verdict cache
-        PortmasterPacketInfo *packetInfoToFree = NULL;
-        rc = verdictCacheAdd(verdictCache, packetInfo, verdict, &packetInfoToFree);
-
-        // Free returned packet info.
-        if (packetInfoToFree != NULL) {
-            portmasterFree(packetInfoToFree);
-        }
-
-        //If verdict could not be added, drop and free the packet
-        if (rc != 0) {
-            portmasterFree(packetInfo);
-            portmasterFree(packet);
-            return;
-        }
-    }
-
-    //Handle Packet according to Verdict
-    switch (verdict) {
-        case PORTMASTER_VERDICT_DROP:
-            INFO("PORTMASTER_VERDICT_DROP: %s", printPacketInfo(packetInfo));
-            portmasterFree(packet);
-            return;
-        case PORTMASTER_VERDICT_BLOCK:
-            INFO("PORTMASTER_VERDICT_BLOCK: %s", printPacketInfo(packetInfo));
-            sendBlockPacket(packetInfo, packet, packetLength);
-            portmasterFree(packet);
-            return;
-        case PORTMASTER_VERDICT_ACCEPT:
-            DEBUG("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
-            break; // ACCEPT
-        case PORTMASTER_VERDICT_REDIR_DNS:
-            INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", printPacketInfo(packetInfo));
-            redirectPacket(packetInfo, packetInfo, packet, packetLength, true);
-            // redirect will free the packet memory
-            return;
-        case PORTMASTER_VERDICT_REDIR_TUNNEL:
-            INFO("PORTMASTER_VERDICT_REDIR_TUNNEL: %s", printPacketInfo(packetInfo));
-            redirectPacket(packetInfo, packetInfo, packet, packetLength, false);
-            // redirect will free the packet memory
-            return;
-        default:
-            WARN("unknown verdict: 0x%x {%s}", printPacketInfo(packetInfo));
-            portmasterFree(packet);
-            return;
-    }
-
+void injectPacketCallout(PortmasterPacketInfo* packetInfo, char *packet, size_t packetLength) {
     // Fix checksums, including TCP/UDP.
     if (!packetInfo->ipV6) {
         calcIPv4Checksum(packet, packetLength, true);
@@ -203,26 +96,6 @@ void respondWithVerdict(UINT32 id, verdict_t verdict) {
     if (!NT_SUCCESS(status)) {
         ERR("respondWithVerdict -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
     }
-
-    // If verdict is temporary, free packetInfo
-    if (temporary) {
-        portmasterFree(packetInfo);
-    }
-    // otherwise, keep packetInfo because it is referenced by verdict_cache
-
-    INFO("Good Bye respondWithVerdict");
-}
-
-PacketCache* getPacketCache() {
-    return packetCache;
-}
-
-int updateVerdict(VerdictUpdateInfo *info) {
-    if(info->ipV6) {
-        return verdictCacheUpdate(verdictCacheV6, info);
-    } else {
-        return verdictCacheUpdate(verdictCacheV4, info);
-    }
 }
 
 /******************************************************************
@@ -230,7 +103,6 @@ int updateVerdict(VerdictUpdateInfo *info) {
  ******************************************************************/
 FWP_ACTION_TYPE classifySingle(
     PortmasterPacketInfo* packetInfo,
-    VerdictCache *verdictCache,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     PNET_BUFFER nb,
     UINT32 ipHeaderSize
@@ -245,27 +117,6 @@ FWP_ACTION_TYPE classifySingle(
             return FWP_ACTION_BLOCK;
         }
     }
-
-#ifdef DEBUG_ON
-    {
-        void* data = NULL;
-        status = borrowPacketDataFromNB(nb, ipHeaderSize, &data);
-        if (NT_SUCCESS(status)) {
-            IPv4Header* p = (IPv4Header*)data;
-            DEBUG("[v6=%d, dir=%d] V=%d, HL=%d, TOS=%d, TL=%d, ID=%d, FRAGO=%d, TTL=%d, P=%d, SUM=%d, SRC=%d.%d.%d.%d, DST=%d.%d.%d.%d",
-                packetInfo->ipV6,
-                packetInfo->direction,
-                p->Version, p->HdrLength, p->TOS,
-                RtlUshortByteSwap(p->Length),
-                RtlUshortByteSwap(p->Id),
-                RtlUshortByteSwap(p->FragOff0),
-                p->TTL, p->Protocol,
-                RtlUshortByteSwap(p->Checksum),
-                FORMAT_ADDR(RtlUlongByteSwap(p->SrcAddr)),
-                FORMAT_ADDR(RtlUlongByteSwap(p->DstAddr)));
-        }
-    }
-#endif // DEBUG
 
     bool copiedNBForPacketInfo = false;
     size_t dataLength = 0;
@@ -337,7 +188,7 @@ FWP_ACTION_TYPE classifySingle(
 
     // First check if the packet is a DNAT response.
     PortmasterPacketInfo* redirInfo = NULL;
-    verdict_t verdict = verdictCacheGet(verdictCache, packetInfo, &redirInfo);
+    verdict_t verdict = verdictCacheGet(packetInfo, &redirInfo);
 
 
     switch (verdict) {
@@ -436,7 +287,7 @@ FWP_ACTION_TYPE classifySingle(
         if (fastTracked) {
             // Add to verdict cache
             PortmasterPacketInfo *packetInfoToFree = NULL;
-            rc = verdictCacheAdd(verdictCache, copiedPacketInfo, PORTMASTER_VERDICT_ACCEPT, &packetInfoToFree);
+            rc = verdictCacheAdd(copiedPacketInfo, PORTMASTER_VERDICT_ACCEPT, &packetInfoToFree);
 
             // Free returned packet info.
             if (packetInfoToFree != NULL) {
@@ -485,7 +336,7 @@ FWP_ACTION_TYPE classifySingle(
 
             DEBUG("trying to register packet");
             // Explicit lock is required, because two or more callouts can run simultaneously.
-            copiedPacketInfo->id = packetCacheRegister(packetCache, copiedPacketInfo, data, dataLength, &packetInfoToFree, &dataToFree);
+            copiedPacketInfo->id = packetCacheRegister(copiedPacketInfo, data, dataLength, &packetInfoToFree, &dataToFree);
             INFO("registered packet with ID %u: %s", copiedPacketInfo->id, printIpv4Packet(data));
 
             if (packetInfoToFree != NULL && dataToFree != NULL) {
@@ -506,7 +357,6 @@ FWP_ACTION_TYPE classifySingle(
 
 void classifyMultiple(
     PortmasterPacketInfo* packetInfo,
-    VerdictCache *verdictCache,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
     FWPS_CLASSIFY_OUT* classifyOut
@@ -535,7 +385,7 @@ void classifyMultiple(
         ERR("Missing classifyOut");
         return;
     }
-    if (packetInfo == NULL || verdictCache == NULL|| inMetaValues == NULL || layerData == NULL) {
+    if (packetInfo == NULL || inMetaValues == NULL || layerData == NULL) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
@@ -651,7 +501,7 @@ void classifyMultiple(
             packetInfo->processID = 0;
 
             // Classify net buffer.
-            action = classifySingle(packetInfo, verdictCache, inMetaValues, nb, ipHeaderSize);
+            action = classifySingle(packetInfo, inMetaValues, nb, ipHeaderSize);
             switch (action) {
             case FWP_ACTION_PERMIT:
                 // Permit packet.
@@ -771,7 +621,7 @@ void classifyInboundIPv4(
         inboundV4PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
 
-    classifyMultiple(&inboundV4PacketInfo, verdictCacheV4, inMetaValues, layerData, classifyOut);
+    classifyMultiple(&inboundV4PacketInfo, inMetaValues, layerData, classifyOut);
 }
 
 void classifyOutboundIPv4(
@@ -820,7 +670,7 @@ void classifyOutboundIPv4(
         outboundV4PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
 
-    classifyMultiple(&outboundV4PacketInfo, verdictCacheV4, inMetaValues, layerData, classifyOut);
+    classifyMultiple(&outboundV4PacketInfo, inMetaValues, layerData, classifyOut);
 }
 
 void classifyInboundIPv6(
@@ -881,7 +731,7 @@ void classifyInboundIPv6(
     } else {
         inboundV6PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
-    classifyMultiple(&inboundV6PacketInfo, verdictCacheV6, inMetaValues, layerData, classifyOut);
+    classifyMultiple(&inboundV6PacketInfo, inMetaValues, layerData, classifyOut);
 }
 
 void classifyOutboundIPv6(
@@ -944,17 +794,5 @@ void classifyOutboundIPv6(
     } else {
         outboundV6PacketInfo.compartmentId = UNSPECIFIED_COMPARTMENT_ID;
     }
-    classifyMultiple(&outboundV6PacketInfo, verdictCacheV6, inMetaValues, layerData, classifyOut);
-}
-
-void clearCache() {
-    INFO("Cleaning all verdict cache");
-
-    // Clear IPv4 verdict cache
-    // freePacketInfo will free the packet info stored in every item of the cache
-    verdictCacheClear(verdictCacheV4, freePacketInfo);
-
-    // Clear IPv6 verdict cache
-    // freePacketInfo will free the packet info stored in every item of the cache
-    verdictCacheClear(verdictCacheV6, freePacketInfo);
+    classifyMultiple(&outboundV6PacketInfo, inMetaValues, layerData, classifyOut);
 }

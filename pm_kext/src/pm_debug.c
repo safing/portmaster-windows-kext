@@ -20,22 +20,22 @@ int logLevel = LEVEL_INFO;
 static KSPIN_LOCK debugLock;
 
 void __DEBUG(char* name, int level, int line, char* format, ...) {
-    if (level >= logLevel) {
-        KLOCK_QUEUE_HANDLE lockHandle;
-        //Locking is required because we want to use static variables here for better performance
-        KeAcquireInStackQueuedSpinLock(&debugLock, &lockHandle);
-        {
-            va_list args;
-            static char buf[DEBUG_BUFSIZE + 1];
-            static char *levelNames[] = {"DEBUG", "INFO", "WARN", "ERROR", "FATAL"};
-            va_start(args, format);
-            RtlStringCbVPrintfA(buf, DEBUG_BUFSIZE, format, args);
+    // if (level >= logLevel) {
+    //     KLOCK_QUEUE_HANDLE lockHandle;
+    //     //Locking is required because we want to use static variables here for better performance
+    //     KeAcquireInStackQueuedSpinLock(&debugLock, &lockHandle);
+    //     {
+    //         va_list args;
+    //         static char buf[DEBUG_BUFSIZE + 1];
+    //         static char *levelNames[] = {"DEBUG", "INFO", "WARN", "ERROR", "FATAL"};
+    //         va_start(args, format);
+    //         RtlStringCbVPrintfA(buf, DEBUG_BUFSIZE, format, args);
 
-            DbgPrint("%s %s L%04d: %s\n", name, levelNames[level], line, buf);
-            va_end(args);
-        }
-        KeReleaseInStackQueuedSpinLock(&lockHandle);
-    }
+    //         DbgPrint("%s %s L%04d: %s\n", name, levelNames[level], line, buf);
+    //         va_end(args);
+    //     }
+    //     KeReleaseInStackQueuedSpinLock(&lockHandle);
+    // }
 }
 
 void ipToString(int *ip, bool ipV6, char* buf, int size) {

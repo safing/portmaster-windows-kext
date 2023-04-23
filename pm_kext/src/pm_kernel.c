@@ -387,7 +387,7 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
 
             INFO("IOCTL_GET_PAYLOAD for id=%u, expect %u Bytes", payload->id, payload->len);
             // 1. Locate packet in packet cache
-            NTSTATUS rc = (NTSTATUS)packetCacheGet(getPacketCache(), payload->id, &packet, &packetLength);
+            NTSTATUS rc = (NTSTATUS)packetCacheGet(payload->id, &packet, &packetLength);
 
             // 2. Sanity Checks
             if (rc != 0) {
@@ -448,7 +448,7 @@ IOCTL_GET_PAYLOAD_EXIT:
         }
         case IOCTL_UPDATE_VERDICT: {
             VerdictUpdateInfo *verdictUpdateInfo = (VerdictUpdateInfo*)pBuf;
-            updateVerdict(verdictUpdateInfo);
+            verdictCacheUpdate(verdictUpdateInfo);
             Irp->IoStatus.Status = STATUS_SUCCESS;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_SUCCESS;

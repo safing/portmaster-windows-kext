@@ -1,6 +1,5 @@
 use core::{ffi::c_void, ptr};
 
-use no_panic::no_panic;
 
 extern "C" {
     fn KeInitializeSpinLock(lock: *mut KSpinLock);
@@ -31,7 +30,6 @@ pub struct KSpinLock {
 }
 
 impl KSpinLock {
-    #[no_panic]
     pub fn create() -> Self {
         unsafe {
             let mut p: KSpinLock = KSpinLock { ptr: ptr::null_mut() };
@@ -40,7 +38,6 @@ impl KSpinLock {
         }
     }
 
-    #[no_panic]
     pub fn lock(&mut self) -> KLockQueueHandle {
         let mut handle = KLockQueueHandle { lock_queue: KSpinLockQueue { next: ptr::null_mut(), lock: ptr::null_mut() }, old_irql: 0 };
         unsafe {
@@ -52,7 +49,6 @@ impl KSpinLock {
 }
 
 impl Drop for KLockQueueHandle {
-    #[no_panic]
     fn drop(&mut self) {
         unsafe {
             KeReleaseInStackQueuedSpinLock(self as *mut KLockQueueHandle);

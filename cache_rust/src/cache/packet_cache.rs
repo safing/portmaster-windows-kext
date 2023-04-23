@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, vec::Vec};
 
-use crate::{packet_info::PortmasterPacketInfo, lock::KSpinLock};
+use crate::{packet_info::PortmasterPacketInfo, lock::KSpinLock, log};
 
 struct Item {
     packet_id: u32,
@@ -16,8 +16,12 @@ pub struct PacketCache {
     spin_lock: KSpinLock,
 }
 
+unsafe impl Sync for PacketCache {}
+
 impl PacketCache {
     pub fn create(max_size: usize) -> Box<PacketCache> {
+        log!("packet cache create");
+
         let mut items = Vec::with_capacity(max_size);
         for _ in 0..max_size {
             items.push(None);
@@ -57,6 +61,8 @@ impl PacketCache {
         packet: *const u8,
         packet_length: usize,
     ) -> (u32, Option<(*mut PortmasterPacketInfo, *const u8)>) {
+        log!("packet cache register");
+
         let _lock_guard = self.spin_lock.lock();
         
         let packet_id = self.next_packet_id as u32;
@@ -91,6 +97,7 @@ impl PacketCache {
     }
 
     pub fn retrieve(&mut self, packet_id: u32) -> Option<(*mut PortmasterPacketInfo, *const u8, usize)> {
+        log!("packet cache retrieve");
         let _lock_guard = self.spin_lock.lock();
 
         if !self.is_packet_id_valid(packet_id) {
@@ -114,6 +121,7 @@ impl PacketCache {
     }
 
     pub fn get(&mut self, packet_id: u32) -> Option<(*mut PortmasterPacketInfo, *const u8, usize)> {
+        log!("packet cache get");
         let _lock_guard = self.spin_lock.lock();
 
         if !self.is_packet_id_valid(packet_id) {
@@ -132,3 +140,4 @@ impl PacketCache {
         return result;
     }
 }
+

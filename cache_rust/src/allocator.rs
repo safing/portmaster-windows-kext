@@ -1,10 +1,7 @@
 use core::alloc::{GlobalAlloc, Layout};
 
+use crate::wdk;
 
-extern {
-    pub fn portmasterMalloc(size: usize, paged: bool) -> *mut u8;
-    pub fn portmasterFree(ptr: *mut u8);
-}
 
 struct PortmasterAllocator {}
 
@@ -12,11 +9,11 @@ unsafe impl Sync for PortmasterAllocator {}
 
 unsafe impl GlobalAlloc for PortmasterAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        return portmasterMalloc(layout.size(), false);
+        return wdk::malloc(layout.size());
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, _: Layout) {
-        return portmasterFree(ptr);
+        return wdk::free(ptr);
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {

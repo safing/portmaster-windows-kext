@@ -22,7 +22,7 @@
 #define uint64_t UINT64
 #endif
 
-#define PacketCache void
+// #define PacketCache void
 
 /**
  * @brief Initializes the packet cache
@@ -32,7 +32,7 @@
  * @return error code
  *
  */
-extern int packetCacheCreate(uint32_t maxSize, PacketCache **packetCache);
+// extern int packetCacheCreate(uint32_t maxSize, PacketCache **packetCache);
 
 /**
  * @brief Tears down the packet cache
@@ -41,7 +41,7 @@ extern int packetCacheCreate(uint32_t maxSize, PacketCache **packetCache);
  * @return error code
  *
  */
-extern int packetCacheTeardown(PacketCache *packetCache, void(*freeData)(PortmasterPacketInfo*, void*));
+// extern int packetCacheTeardown(void(*freeData)(PortmasterPacketInfo*, void*));
 
 /**
  * @brief Registers a packet
@@ -52,7 +52,7 @@ extern int packetCacheTeardown(PacketCache *packetCache, void(*freeData)(Portmas
  * @return new packet ID
  *
  */
-extern uint32_t packetCacheRegister(PacketCache *packetCache, PortmasterPacketInfo *packetInfo, void *packet, size_t packetLength, PortmasterPacketInfo **oldPacketInfo, void **oldPacket);
+extern uint32_t packetCacheRegister(PortmasterPacketInfo *packetInfo, void *packet, size_t packetLength, PortmasterPacketInfo **oldPacketInfo, void **oldPacket);
 
 /**
  * @brief Retrieves and deletes a packet from list, if it exists.
@@ -64,7 +64,7 @@ extern uint32_t packetCacheRegister(PacketCache *packetCache, PortmasterPacketIn
  * @return error code
  *
  */
-extern int packetCacheRetrieve(PacketCache *packetCache, uint32_t packetID, PortmasterPacketInfo **packetInfoPtr, void **packet, size_t *packetLength);
+extern int packetCacheRetrieve(uint32_t packetID, PortmasterPacketInfo **packetInfoPtr, void **packet, size_t *packetLength);
 
 /**
  * @brief Retrieves a packet from list, if it exists.
@@ -75,6 +75,6 @@ extern int packetCacheRetrieve(PacketCache *packetCache, uint32_t packetID, Port
  * @return error code
  *
  */
-extern int packetCacheGet(PacketCache *packetCache, uint32_t packetID, void **packet, size_t *packetLength);
+extern int packetCacheGet(uint32_t packetID, void **packet, size_t *packetLength);
 
 #endif

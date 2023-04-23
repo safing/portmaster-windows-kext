@@ -3,38 +3,16 @@ extern crate alloc;
 use alloc::collections::BTreeMap;
 use alloc::boxed::Box;
 use alloc::rc::Rc;
+use crate::common::Verdict;
 use crate::lock::KSpinLock;
+use crate::log;
 use crate::packet_info::PortmasterPacketInfo;
-use crate::packet_key::Key;
+
+use super::packet_key::Key;
 
 const DIRECTION_INBOUND: u8 = 1;
 const PORT_PM_SPN_ENTRY: u16 = 717;
 const PORT_DNS: u16 = 53;
-
-#[repr(u8)]
-#[derive(Clone, Copy)]
-pub enum Verdict {
-    Error = 0,
-    Get,
-    Accept,
-    Block,
-    Drop,
-    RedirDns,
-    RedirTunnel,
-}
-
-impl Verdict {
-    fn is_redirect(&self) -> bool {
-        match self {
-            Verdict::RedirDns | Verdict::RedirTunnel => {
-                return true;
-            }
-            _ => {
-                return false;
-            },
-        }
-    }
-}
 
 #[repr(C)]
 pub struct VerdictUpdateInfo {
@@ -55,6 +33,10 @@ impl VerdictUpdateInfo {
               remote_port: self.remote_port, 
               protocol: self.protocol }
     }
+
+    pub fn is_ipv6(&self) -> bool {
+        return self.ip_v6 == 1;
+    }
 }
 
 struct VerdictCacheItem {
@@ -73,14 +55,16 @@ pub struct VerdictCache {
     spin_lock: KSpinLock,
 }
 
-// unsafe impl Sync for VerdictCache {}
+unsafe impl Sync for VerdictCache {}
 
 impl VerdictCache {
-    pub fn create(max_size: u32) -> Box<VerdictCache> {
+    pub fn create(max_size: usize) -> Box<VerdictCache> {
+        log!("verdict cache create");
+
         return Box::new(VerdictCache { 
             verdicts: BTreeMap::new(), 
             redirects: BTreeMap::new(),
-            max_size: max_size as usize,
+            max_size: max_size,
             cache_access_counter: 0,
             spin_lock: KSpinLock::create()});
     }
@@ -131,6 +115,8 @@ impl VerdictCache {
     } 
 
     pub fn update(&mut self, info: &mut VerdictUpdateInfo) {
+        log!("verdict cache update");
+
         // Lock and call internal update
         let _lock_guard = self.spin_lock.lock();
         if let Some(item) = self.verdicts.remove(&info.get_verdict_key()) {
@@ -164,6 +150,8 @@ impl VerdictCache {
     }
 
     pub fn add(&mut self, info: &mut PortmasterPacketInfo, verdict: Verdict) -> Option<*mut PortmasterPacketInfo> {
+        log!("verdict cache add");
+
         // Lock
         let _lock_guard = self.spin_lock.lock();
 
@@ -206,11 +194,13 @@ impl VerdictCache {
     }
 
     pub fn get(&mut self, info: &PortmasterPacketInfo) -> Result<(Option<*mut PortmasterPacketInfo>, Verdict), ()> {
+        log!("verdict cache get");
+
         // Lock
         let _lock_guard = self.spin_lock.lock();
         self.cache_access_counter += 1;
         
-        // CHeck for redirect.
+        // Check for redirect.
         if info.direction == DIRECTION_INBOUND && (info.remote_port == PORT_PM_SPN_ENTRY || info.remote_port == PORT_DNS) {
             if let Some(item) = self.redirects.get_mut(&info.get_redirect_key()) {
                 if item.verdict.is_redirect() {
