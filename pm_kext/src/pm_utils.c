@@ -188,3 +188,7 @@ NTSTATUS copyIPv6(const FWPS_INCOMING_VALUES* inFixedValues, FWPS_FIELDS_OUTBOUN
 
     return STATUS_SUCCESS;
 }
+
+size_t NetBufferDataLength(PNET_BUFFER nb) {
+    return NET_BUFFER_DATA_LENGTH(nb);
+}

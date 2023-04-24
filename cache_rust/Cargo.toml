@@ -18,6 +18,7 @@ name = "cache_rust"
 path = "src/lib.rs"
 crate-type = ["staticlib"]
 
-[dependencies]
-# libc-print = "0.1.20"
-# no-panic = "0.1.17"
+[dependencies.windows-sys]
+version = "0.48"
+# default-features = false
+features = ["Win32_Foundation"]

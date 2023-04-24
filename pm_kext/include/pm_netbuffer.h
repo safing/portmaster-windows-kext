@@ -16,7 +16,7 @@
 NTSTATUS initNetBufferPool();
 void freeNetBufferPool();
 NTSTATUS wrapPacketDataInNB(void *packetData, size_t packetLen, PNET_BUFFER_LIST *nbl);
-NTSTATUS copyPacketDataFromNB(PNET_BUFFER nb, size_t maxBytes, void **data, size_t *dataLength);
-NTSTATUS borrowPacketDataFromNB(PNET_BUFFER nb, size_t bytesNeeded, void **data);
+extern NTSTATUS copyPacketDataFromNB(PNET_BUFFER nb, size_t maxBytes, void **data, size_t *dataLength);
+extern NTSTATUS borrowPacketDataFromNB(PNET_BUFFER nb, size_t bytesNeeded, void **data);
 
 #endif // PM_NETBUFFER_H
