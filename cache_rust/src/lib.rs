@@ -3,8 +3,6 @@
 #![feature(alloc_error_handler)]
 #![feature(lang_items)]
 #![feature(const_trait_impl)]
-#![feature(core_panic)]
-// #![feature(catch_unwind)]
 mod allocator;
 mod common;
 mod debug;
@@ -15,6 +13,8 @@ mod wdk;
 extern crate alloc;
 
 use common::Verdict;
+
+#[cfg(not(test))]
 use core::panic::PanicInfo;
 
 #[no_mangle]
