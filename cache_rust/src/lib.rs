@@ -1,8 +1,7 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 #![no_main]
-#![feature(alloc_error_handler)]
 #![feature(lang_items)]
-#![feature(const_trait_impl)]
+// #![feature(const_trait_impl)]
 mod allocator;
 mod common;
 mod debug;
@@ -10,6 +9,7 @@ pub mod lock;
 mod packet_info;
 mod cache;
 mod wdk;
+mod driver;
 extern crate alloc;
 
 use common::Verdict;
@@ -87,6 +87,19 @@ fn panic(info: &PanicInfo) -> ! {
     loop {}
 }
 
+
 #[cfg(not(test))]
 #[lang = "eh_personality"]
 extern "C" fn eh_personality() {}
+
+
+
+#[test]
+fn gen_bindings() {
+    let apis = [
+        "Windows.Win32.System.SystemInformation.GetTickCount",
+    ];
+
+    let bindings = windows_bindgen::standalone(&apis);
+    // std::fs::write("src/bindings.rs", bindings).unwrap();
+}

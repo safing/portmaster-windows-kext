@@ -22,3 +22,9 @@ crate-type = ["staticlib"]
 version = "0.48"
 # default-features = false
 features = ["Win32_Foundation"]
+
+[dependencies.windows-targets]
+version = "0.48"
+
+[dev-dependencies.windows-bindgen]
+version = "0.48"

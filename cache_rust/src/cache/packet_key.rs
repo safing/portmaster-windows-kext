@@ -83,7 +83,6 @@ impl Ord for Key {
     fn max(self, other: Self) -> Self
     where
         Self: Sized,
-        Self: ~const core::marker::Destruct,
     {
         match self.cmp(&other) {
             core::cmp::Ordering::Less | core::cmp::Ordering::Equal => other,
@@ -94,7 +93,6 @@ impl Ord for Key {
     fn min(self, other: Self) -> Self
     where
         Self: Sized,
-        Self: ~const core::marker::Destruct,
     {
         match self.cmp(&other) {
             core::cmp::Ordering::Less | core::cmp::Ordering::Equal => self,
@@ -105,8 +103,7 @@ impl Ord for Key {
     fn clamp(self, min: Self, max: Self) -> Self
     where
         Self: Sized,
-        Self: ~const core::marker::Destruct,
-        Self: ~const PartialOrd,
+        Self: PartialOrd,
     {
         assert!(min <= max);
         if self < min {

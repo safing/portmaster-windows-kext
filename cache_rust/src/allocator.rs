@@ -41,9 +41,3 @@ unsafe impl GlobalAlloc for PortmasterAllocator {
 // Declaration of the global memory allocator
 #[global_allocator]
 static HEAP: PortmasterAllocator = PortmasterAllocator {};
-
-#[alloc_error_handler]
-fn alloc_error(_layout: core::alloc::Layout) -> ! {
-    //panic!("memory allocation of {} bytes failed", layout.size())
-    loop {}
-}
