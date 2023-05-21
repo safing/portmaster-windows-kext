@@ -19,9 +19,11 @@ path = "src/lib.rs"
 crate-type = ["staticlib"]
 
 [dependencies.windows-sys]
-version = "0.48"
-# default-features = false
-features = ["Win32_Foundation"]
+path = "../../windows-rs/crates/libs/sys"
+
+features = ["Wdk_Foundation", "Win32_Foundation", "Win32_System_Kernel", "Win32_Security", "Wdk_System_SystemServices", "Win32_System_Power", "Win32_System_WindowsProgramming", "Wdk_Storage_FileSystem"]
+#features = ["Wdk", "Wdk_Foundation", "Wdk_Storage_FileSystem", "Wdk_System_SystemServices", "Win32_Foundation", "Win32_Graphics_DirectDraw", "Win32_Security", "Win32_System_Kernel", "Win32_System_Power", "Win32_System_WindowsProgramming"]
+
 
 [dependencies.windows-targets]
 version = "0.48"

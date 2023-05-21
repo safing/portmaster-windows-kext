@@ -1,6 +1,6 @@
 use alloc::{string, ffi::CString};
+use windows_sys::Win32::Foundation::{NTSTATUS, STATUS_INVALID_PARAMETER, STATUS_SUCCESS, STATUS_INTERNAL_ERROR, STATUS_INSUFFICIENT_RESOURCES};
 use core::ptr;
-use windows_sys::Win32::Foundation::*;
 
 use crate::packet_info::PortmasterPacketInfo;
 
@@ -25,8 +25,6 @@ extern {
     fn NdisGetDataBuffer(net_buffer: NetBuffer, bytes_needed: u64, storage: *mut u8, align_multiple: u64, align_offset: u64) -> *mut u8;
 
     fn NetBufferDataLength(net_buffer: NetBuffer) -> usize;
-
-    // TODO: copyPacketDataFromNB
 }
 
 
@@ -76,10 +74,10 @@ pub fn inject_packet_callout(info: *mut PortmasterPacketInfo, data: *const u8, s
     }
 }
 
-pub fn ndis_retreat_net_buffer_data_start(net_buffer: NetBuffer, data_offset_delta: u64, data_back_flip: u64) -> Result<(), i32>{
+pub fn ndis_retreat_net_buffer_data_start(net_buffer: NetBuffer, data_offset_delta: u64, data_back_flip: u64) -> Result<(), NTSTATUS>{
     unsafe {
         let result = NdisRetreatNetBufferDataStart(net_buffer, data_offset_delta, data_back_flip, ptr::null_mut());
-        if result >= 0 {
+        if result > 0 {
             return Ok(());
         }
 

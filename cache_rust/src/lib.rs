@@ -3,13 +3,15 @@
 #![feature(lang_items)]
 // #![feature(const_trait_impl)]
 mod allocator;
+mod cache;
 mod common;
 mod debug;
+mod driver;
+mod fund;
+mod ioqueue;
 pub mod lock;
 mod packet_info;
-mod cache;
 mod wdk;
-mod driver;
 extern crate alloc;
 
 use common::Verdict;
@@ -20,20 +22,18 @@ use core::panic::PanicInfo;
 #[no_mangle]
 pub extern "C" fn respondWithVerdict(packet_id: u32, verdict: Verdict) {
     if packet_id == 0 || verdict == Verdict::Error {
-        return
+        return;
     }
 
-    
-    let result = unsafe { 
+    let result = unsafe {
         if let Some(cache) = &mut cache::PACKET_CACHE {
-        cache.get(packet_id)
+            cache.get(packet_id)
         } else {
             return;
         }
     };
 
     if let Some((info_p, data, size)) = result {
-        
         unsafe {
             if let Some(info) = info_p.as_mut() {
                 if info.is_ipv6() {
@@ -57,20 +57,22 @@ pub extern "C" fn respondWithVerdict(packet_id: u32, verdict: Verdict) {
         match verdict {
             Verdict::Accept => {
                 wdk::inject_packet_callout(info_p, data, size);
-            },
+            }
             Verdict::Block => {
                 wdk::send_blocked_packet(info_p, data, size);
-            },
-            Verdict::Drop => { wdk::free(data as *mut u8)},
+            }
+            Verdict::Drop => wdk::free(data as *mut u8),
             Verdict::RedirectDns | Verdict::RedirectTunnel => {
                 wdk::redirect_packet(info_p, info_p, data, size)
-            },
-            _ => { wdk::free(data as *mut u8)},
+            }
+            _ => wdk::free(data as *mut u8),
         }
     } else {
-        log!("received verdict response for unknown packet id: {}", packet_id);
+        log!(
+            "received verdict response for unknown packet id: {}",
+            packet_id
+        );
     }
-    
 }
 
 #[cfg(not(test))]
@@ -87,18 +89,13 @@ fn panic(info: &PanicInfo) -> ! {
     loop {}
 }
 
-
 #[cfg(not(test))]
 #[lang = "eh_personality"]
 extern "C" fn eh_personality() {}
 
-
-
 #[test]
 fn gen_bindings() {
-    let apis = [
-        "Windows.Win32.System.SystemInformation.GetTickCount",
-    ];
+    let apis = ["Windows.Win32.System.SystemInformation.GetTickCount"];
 
     let bindings = windows_bindgen::standalone(&apis);
     // std::fs::write("src/bindings.rs", bindings).unwrap();

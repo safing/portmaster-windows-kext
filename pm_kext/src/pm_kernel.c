@@ -94,8 +94,6 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING registry
     bool inTransaction = false;
     bool calloutRegistered = false;
     
-    initDebugStructure();
-
     INFO("Trying to load Kernel Object '%ls', Compile date: %s %s", PORTMASTER_DEVICE_NAME, __DATE__, __TIME__);
     INFO("PM_PACKET_CACHE_SIZE = %d, PM_VERDICT_CACHE_SIZE= %d", PM_PACKET_CACHE_SIZE, PM_VERDICT_CACHE_SIZE);
     status = initCalloutStructure();
