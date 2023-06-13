@@ -1,9 +1,16 @@
 use core::ptr;
 
 use alloc::boxed::Box;
-use windows_sys::Wdk::Foundation::{
-    DISPATCHER_HEADER, DISPATCHER_HEADER_0, DISPATCHER_HEADER_0_0, KQUEUE,
+use windows_sys::{
+    Wdk::Foundation::{DISPATCHER_HEADER, DISPATCHER_HEADER_0, DISPATCHER_HEADER_0_0, KQUEUE},
+    Win32::System::Kernel::LIST_ENTRY,
 };
+
+extern "C" {
+    fn KeInitializeQueue(queue: *mut IOQueue, arg: i32);
+    fn KeRemoveQueue(queue: *mut IOQueue, mode: i32, timeout: *mut i64) -> LIST_ENTRY;
+    fn KeRundownQueue(queue: *mut IOQueue) -> *mut LIST_ENTRY;
+}
 
 struct IOQueue {
     kernel_queue: KQUEUE,
@@ -42,7 +49,4 @@ impl IOQueue {
 
         return queue;
     }
-}
-extern "C" {
-    fn KeInitializeQueue(queue: *mut IOQueue, arg: i32);
 }
