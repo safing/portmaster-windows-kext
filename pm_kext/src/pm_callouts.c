@@ -225,6 +225,55 @@ int updateVerdict(VerdictUpdateInfo *info) {
     }
 }
 
+bool wasPacketInjected(PortmasterPacketInfo *packetInfo, void *layerData) {
+    if(layerData == NULL) {
+        return false;
+    }
+
+    // Get injection handle.
+    HANDLE handle = getInjectionHandleForPacket(packetInfo);
+
+    // Interpret layer data as netbuffer list and check if it's a looping packet.
+    // Packets created/injected by us will loop back to us.
+    PNET_BUFFER_LIST nbl = (PNET_BUFFER_LIST) layerData;
+    FWPS_PACKET_INJECTION_STATE injectionState = FwpsQueryPacketInjectionState(handle, nbl, NULL);
+    if (injectionState == FWPS_PACKET_INJECTED_BY_SELF ||
+        injectionState == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
+        // We must always hard permit here, as the Windows Firewall sometimes
+        // blocks our injected packets.
+        // The follow-up (directly accepted) packets are not blocked.
+        // Note: Hard Permit is now the default and is set immediately in the
+        // callout.
+
+        INFO("packet was in loop, injectionState= %d ", injectionState);
+        return true;
+    }
+
+    // Get block injection handle.
+    handle = getBlockedPacketInjectHandle(packetInfo);
+    injectionState = FwpsQueryPacketInjectionState(handle, nbl, NULL);
+    if (injectionState == FWPS_PACKET_INJECTED_BY_SELF ||
+        injectionState == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
+        // We must always hard permit here, as the Windows Firewall sometimes
+        // blocks our injected packets.
+        // The follow-up (directly accepted) packets are not blocked.
+        // Note: Hard Permit is now the default and is set immediately in the
+        // callout.
+
+        INFO("blocked packet was in loop, injectionState= %d ", injectionState);
+        return true;
+    }
+
+    #ifdef DEBUG_ON
+    // Print if packet is injected by someone else for debugging purposes.
+    if (injectionState == FWPS_PACKET_INJECTED_BY_OTHER) {
+        INFO("packet was injected by other, injectionState= %d ", injectionState);
+    }
+    #endif // DEBUG
+
+    return false;
+}
+
 /******************************************************************
  * Classify Functions
  ******************************************************************/
@@ -541,50 +590,10 @@ void classifyMultiple(
         return;
     }
 
-    // Get injection handle.
-    HANDLE handle = getInjectionHandleForPacket(packetInfo);
-
-    // Interpret layer data as netbuffer list and check if it's a looping packet.
-    // Packets created/injected by us will loop back to us.
-    PNET_BUFFER_LIST nbl = (PNET_BUFFER_LIST) layerData;
-    FWPS_PACKET_INJECTION_STATE injectionState = FwpsQueryPacketInjectionState(handle, nbl, NULL);
-    if (injectionState == FWPS_PACKET_INJECTED_BY_SELF ||
-        injectionState == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
+    if(wasPacketInjected(packetInfo, layerData)) {
         classifyOut->actionType = FWP_ACTION_PERMIT;
-
-        // We must always hard permit here, as the Windows Firewall sometimes
-        // blocks our injected packets.
-        // The follow-up (directly accepted) packets are not blocked.
-        // Note: Hard Permit is now the default and is set immediately in the
-        // callout.
-
-        INFO("packet was in loop, injectionState= %d ", injectionState);
         return;
     }
-
-    // Get block injection handle.
-    handle = getBlockedPacketInjectHandle(packetInfo);
-    injectionState = FwpsQueryPacketInjectionState(handle, nbl, NULL);
-    if (injectionState == FWPS_PACKET_INJECTED_BY_SELF ||
-        injectionState == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
-        classifyOut->actionType = FWP_ACTION_PERMIT;
-
-        // We must always hard permit here, as the Windows Firewall sometimes
-        // blocks our injected packets.
-        // The follow-up (directly accepted) packets are not blocked.
-        // Note: Hard Permit is now the default and is set immediately in the
-        // callout.
-
-        INFO("blocked packet was in loop, injectionState= %d ", injectionState);
-        return;
-    }
-
-    #ifdef DEBUG_ON
-    // Print if packet is injected by someone else for debugging purposes.
-    if (injectionState == FWPS_PACKET_INJECTED_BY_OTHER) {
-        INFO("packet was injected by other, injectionState= %d ", injectionState);
-    }
-    #endif // DEBUG
 
     // Permit fragmented packets.
     // But of course not the first one, we are checking that one!
@@ -616,6 +625,7 @@ void classifyMultiple(
     // Iterate over net buffer lists.
     UINT32 nblLoopI = 0;
     UINT32 nbLoopI = 0;
+    PNET_BUFFER_LIST nbl = (PNET_BUFFER_LIST) layerData;
     for (; nbl != NULL; nbl = NET_BUFFER_LIST_NEXT_NBL(nbl)) {
 
         // Get first netbuffer from list.
@@ -947,6 +957,295 @@ void classifyOutboundIPv6(
     classifyMultiple(&outboundV6PacketInfo, verdictCacheV6, inMetaValues, layerData, classifyOut);
 }
 
+void classifyALEOutboundIPv4(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut) {
+
+    UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(classifyOut);
+
+    // Sanity check 2
+    if (!inFixedValues || !inMetaValues) {
+        ERR("Invalid parameters");
+        return;
+    }
+
+    PortmasterPacketInfo *packetInfo = portmasterMalloc(sizeof(PortmasterPacketInfo), false);
+    if (!packetInfo) {
+        ERR("Insufficient Resources for allocating packetInfo");
+        return;
+    }
+
+    packetInfo->direction = DIRECTION_OUTBOUND;
+    packetInfo->ipV6 = 0;
+    packetInfo->localIP[0] = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V4_IP_LOCAL_ADDRESS].value.uint32;
+    packetInfo->localPort = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V4_IP_LOCAL_PORT].value.uint16;
+    packetInfo->remoteIP[0] = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V4_IP_REMOTE_ADDRESS].value.uint32;
+    packetInfo->remotePort = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V4_IP_REMOTE_PORT].value.uint16;
+    packetInfo->interfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V4_INTERFACE_INDEX].value.uint32;
+    packetInfo->subInterfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V4_SUB_INTERFACE_INDEX].value.uint32;
+    packetInfo->protocol = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V4_IP_PROTOCOL].value.uint8;
+
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_COMPARTMENT_ID)) {
+        packetInfo->compartmentId = inMetaValues->compartmentId;
+    } else {
+        packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
+    }
+
+    // Get the process ID.
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_PROCESS_ID)) {
+        packetInfo->processID = inMetaValues->processId;
+    } else {
+        packetInfo->processID = 0;
+    }
+
+    if(wasPacketInjected(packetInfo, layerData)) {
+        return;
+    }
+
+    INFO("connection ALE layer process ID: %d", packetInfo->processID);
+
+    // Allocate queue entry and copy packetInfo
+    DataEntry *dentry = portmasterMalloc(sizeof(DataEntry), false);
+    if (!dentry) {
+        ERR("Insufficient Resources for allocating dentry");
+        portmasterFree(packetInfo);
+        return;
+    }
+    dentry->packet = packetInfo;
+
+    /* queuedEntries = */ KeInsertQueue(globalIOQueue, &(dentry->entry));
+}
+
+void classifyALEInboundIPv4(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut) {
+
+    UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(classifyOut);
+
+    // Sanity check 2
+    if (!inFixedValues || !inMetaValues) {
+        ERR("Invalid parameters");
+        return;
+    }
+
+    PortmasterPacketInfo *packetInfo = portmasterMalloc(sizeof(PortmasterPacketInfo), false);
+    if (!packetInfo) {
+        ERR("Insufficient Resources for allocating packetInfo");
+        return;
+    }
+
+    packetInfo->direction = DIRECTION_INBOUND;
+    packetInfo->ipV6 = 0;
+    packetInfo->localIP[0] = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V4_IP_LOCAL_ADDRESS].value.uint32;
+    packetInfo->localPort = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V4_IP_LOCAL_PORT].value.uint16;
+    packetInfo->remoteIP[0] = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V4_IP_REMOTE_ADDRESS].value.uint32;
+    packetInfo->remotePort = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V4_IP_REMOTE_PORT].value.uint16;
+    packetInfo->interfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V4_INTERFACE_INDEX].value.uint32;
+    packetInfo->subInterfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V4_SUB_INTERFACE_INDEX].value.uint32;
+    packetInfo->protocol = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V4_IP_PROTOCOL].value.uint8;
+
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_COMPARTMENT_ID)) {
+        packetInfo->compartmentId = inMetaValues->compartmentId;
+    } else {
+        packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
+    }
+
+    // Get the process ID.
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_PROCESS_ID)) {
+        packetInfo->processID = inMetaValues->processId;
+    } else {
+        packetInfo->processID = 0;
+    }
+
+    if(wasPacketInjected(packetInfo, layerData)) {
+        return;
+    }
+
+    INFO("connection ALE layer process ID: %d", packetInfo->processID);
+
+    // Allocate queue entry and copy packetInfo
+    DataEntry *dentry = portmasterMalloc(sizeof(DataEntry), false);
+    if (!dentry) {
+        ERR("Insufficient Resources for allocating dentry");
+        portmasterFree(packetInfo);
+        return;
+    }
+    dentry->packet = packetInfo;
+
+    /* queuedEntries = */ KeInsertQueue(globalIOQueue, &(dentry->entry));
+}
+
+void classifyALEOutboundIPv6(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut) {
+
+    UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(classifyOut);
+
+    // Sanity check 2
+    if (!inFixedValues || !inMetaValues) {
+        ERR("Invalid parameters");
+        return;
+    }
+
+    PortmasterPacketInfo *packetInfo = portmasterMalloc(sizeof(PortmasterPacketInfo), false);
+    if (!packetInfo) {
+        ERR("Insufficient Resources for allocating packetInfo");
+        return;
+    }
+
+    packetInfo->direction = DIRECTION_OUTBOUND;
+    packetInfo->ipV6 = 1;
+    NTSTATUS status = copyIPv6(inFixedValues, FWPS_FIELD_ALE_AUTH_CONNECT_V6_IP_LOCAL_ADDRESS, packetInfo->localIP);
+    if (status != STATUS_SUCCESS) {
+        ERR("Could not copy IPv6, status= 0x%x", status);
+        return;
+    } 
+    packetInfo->localPort = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V6_IP_LOCAL_PORT].value.uint16;
+
+    status = copyIPv6(inFixedValues, FWPS_FIELD_ALE_AUTH_CONNECT_V6_IP_REMOTE_ADDRESS, packetInfo->remoteIP);
+    if (status != STATUS_SUCCESS) {
+        ERR("Could not copy IPv6, status= 0x%x", status);
+        return;
+    } 
+    packetInfo->remotePort = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V6_IP_REMOTE_PORT].value.uint16;
+
+    packetInfo->interfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V6_INTERFACE_INDEX].value.uint32;
+    packetInfo->subInterfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V6_SUB_INTERFACE_INDEX].value.uint32;
+    packetInfo->protocol = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V6_IP_PROTOCOL].value.uint8;
+
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_COMPARTMENT_ID)) {
+        packetInfo->compartmentId = inMetaValues->compartmentId;
+    } else {
+        packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
+    }
+
+    // Get the process ID.
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_PROCESS_ID)) {
+        packetInfo->processID = inMetaValues->processId;
+    } else {
+        packetInfo->processID = 0;
+    }
+
+    if(wasPacketInjected(packetInfo, layerData)) {
+        return;
+    }
+
+    INFO("connection ALE layer process ID: %d", packetInfo->processID);
+
+    // Allocate queue entry and copy packetInfo
+    DataEntry *dentry = portmasterMalloc(sizeof(DataEntry), false);
+    if (!dentry) {
+        ERR("Insufficient Resources for allocating dentry");
+        portmasterFree(packetInfo);
+        return;
+    }
+    dentry->packet = packetInfo;
+
+    /* queuedEntries = */ KeInsertQueue(globalIOQueue, &(dentry->entry));
+}
+
+void classifyALEInboundIPv6(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut) {
+
+    UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(classifyOut);
+
+    // Sanity check 2
+    if (!inFixedValues || !inMetaValues) {
+        ERR("Invalid parameters");
+        return;
+    }
+
+    PortmasterPacketInfo *packetInfo = portmasterMalloc(sizeof(PortmasterPacketInfo), false);
+    if (!packetInfo) {
+        ERR("Insufficient Resources for allocating packetInfo");
+        return;
+    }
+
+    packetInfo->direction = DIRECTION_INBOUND;
+    packetInfo->ipV6 = 1;
+
+    NTSTATUS status = copyIPv6(inFixedValues, FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V6_IP_LOCAL_ADDRESS, packetInfo->localIP);
+    if (status != STATUS_SUCCESS) {
+        ERR("Could not copy IPv6, status= 0x%x", status);
+        return;
+    }
+    packetInfo->localPort = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V6_IP_LOCAL_PORT].value.uint16;
+
+    status = copyIPv6(inFixedValues, FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V6_IP_REMOTE_ADDRESS, packetInfo->remoteIP);
+    if (status != STATUS_SUCCESS) {
+        ERR("Could not copy IPv6, status= 0x%x", status);
+        return;
+    } 
+    packetInfo->remotePort = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V6_IP_REMOTE_PORT].value.uint16;
+
+    packetInfo->interfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V6_INTERFACE_INDEX].value.uint32;
+    packetInfo->subInterfaceIndex = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V6_SUB_INTERFACE_INDEX].value.uint32;
+    packetInfo->protocol = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V6_IP_PROTOCOL].value.uint8;
+
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_COMPARTMENT_ID)) {
+        packetInfo->compartmentId = inMetaValues->compartmentId;
+    } else {
+        packetInfo->compartmentId = UNSPECIFIED_COMPARTMENT_ID;
+    }
+
+    // Get the process ID.
+    if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_PROCESS_ID)) {
+        packetInfo->processID = inMetaValues->processId;
+    } else {
+        packetInfo->processID = 0;
+    }
+
+    if(wasPacketInjected(packetInfo, layerData)) {
+        return;
+    }
+
+    INFO("connection ALE layer process ID: %d", packetInfo->processID);
+
+    // Allocate queue entry and copy packetInfo
+    DataEntry *dentry = portmasterMalloc(sizeof(DataEntry), false);
+    if (!dentry) {
+        ERR("Insufficient Resources for allocating dentry");
+        portmasterFree(packetInfo);
+        return;
+    }
+    dentry->packet = packetInfo;
+
+    /* queuedEntries = */ KeInsertQueue(globalIOQueue, &(dentry->entry));
+}
+
 void clearCache() {
     INFO("Cleaning all verdict cache");
 
@@ -958,3 +1257,4 @@ void clearCache() {
     // freePacketInfo will free the packet info stored in every item of the cache
     verdictCacheClear(verdictCacheV6, freePacketInfo);
 }
+
