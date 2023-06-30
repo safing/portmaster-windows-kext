@@ -76,8 +76,6 @@ PRKQUEUE globalIOQueue = NULL;
 static LARGE_INTEGER ioQueueTimeout;
 #define QUEUE_TIMEOUT_MILI 10000
 
-#define CONNECTIONS_COUNT 1000
-
 /************************************
    Kernel API Functions
 ************************************/

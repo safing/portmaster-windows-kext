@@ -409,7 +409,7 @@ FWP_ACTION_TYPE classifySingle(
         return FWP_ACTION_BLOCK;
 
     case PORTMASTER_VERDICT_ACCEPT:
-        // INFO("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
+        INFO("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
         return FWP_ACTION_PERMIT;
 
     case PORTMASTER_VERDICT_REDIR_DNS:
