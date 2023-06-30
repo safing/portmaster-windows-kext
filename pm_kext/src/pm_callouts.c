@@ -14,6 +14,7 @@
 #include "pm_kernel.h"
 #include "pm_callouts.h"
 #include "pm_netbuffer.h"
+#include <string.h>
 #define LOGGER_NAME "pm_callouts"
 #include "pm_debug.h"
 #include "pm_checksum.h"
@@ -225,6 +226,12 @@ int updateVerdict(VerdictUpdateInfo *info) {
     }
 }
 
+int getConnectionsStats(PortmasterConnection *connections, int size) {
+    int ipv4Count = verdictCacheWriteBandwidthStats(verdictCacheV4, connections, size, 0); 
+    int ipv6Count = verdictCacheWriteBandwidthStats(verdictCacheV6, connections + ipv4Count, size - ipv4Count, 1); 
+    return ipv4Count + ipv6Count;
+}
+
 bool wasPacketInjected(PortmasterPacketInfo *packetInfo, void *layerData) {
     if(layerData == NULL) {
         return false;
@@ -279,13 +286,13 @@ bool wasPacketInjected(PortmasterPacketInfo *packetInfo, void *layerData) {
  ******************************************************************/
 FWP_ACTION_TYPE classifySingle(
     PortmasterPacketInfo* packetInfo,
-    VerdictCache *verdictCache,
+    VerdictCache* verdictCache,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     PNET_BUFFER nb,
     UINT32 ipHeaderSize
-    ) {
+) {
     NTSTATUS status = STATUS_SUCCESS;
-    
+
     //Inbound traffic requires special treatment - dafuq?
     if (packetInfo->direction == DIRECTION_INBOUND) {
         status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
@@ -318,7 +325,7 @@ FWP_ACTION_TYPE classifySingle(
 
     bool copiedNBForPacketInfo = false;
     size_t dataLength = 0;
-    void *data = NULL;
+    void* data = NULL;
     status = borrowPacketDataFromNB(nb, (size_t)ipHeaderSize + 4, &data);
     if (!NT_SUCCESS(status)) {
         size_t reqBytes = (size_t)ipHeaderSize + 4;
@@ -342,34 +349,36 @@ FWP_ACTION_TYPE classifySingle(
 
     // get protocol
     if (packetInfo->ipV6) {
-        packetInfo->protocol = ((UINT8*) data)[6];
-    } else {
-        packetInfo->protocol = ((UINT8*) data)[9];
+        packetInfo->protocol = ((UINT8*)data)[6];
+    }
+    else {
+        packetInfo->protocol = ((UINT8*)data)[9];
     }
 
     // get ports
     UINT16 srcPort = 0;
     UINT16 dstPort = 0;
     switch (packetInfo->protocol) {
-        case PROTOCOL_TCP:
-        case PROTOCOL_UDP: // UDP
-        case PROTOCOL_DCCP: // DCCP
-        case PROTOCOL_UDPLite: // UDP Lite
-            RtlCopyBytes((void*) &srcPort, (void*) ((UINT8*)data+ipHeaderSize), 2);
-            srcPort = RtlUshortByteSwap(srcPort);
-            RtlCopyBytes((void*) &dstPort, (void*) ((UINT8*)data+ipHeaderSize+2), 2);
-            dstPort= RtlUshortByteSwap(dstPort);
-            if (packetInfo->direction == DIRECTION_INBOUND) {
-                packetInfo->localPort = dstPort;
-                packetInfo->remotePort = srcPort;
-            } else {
-                packetInfo->localPort = srcPort;
-                packetInfo->remotePort = dstPort;
-            }
-            break;
-        default:
-            packetInfo->localPort = 0;
-            packetInfo->remotePort = 0;
+    case PROTOCOL_TCP:
+    case PROTOCOL_UDP: // UDP
+    case PROTOCOL_DCCP: // DCCP
+    case PROTOCOL_UDPLite: // UDP Lite
+        RtlCopyBytes((void*)&srcPort, (void*)((UINT8*)data + ipHeaderSize), 2);
+        srcPort = RtlUshortByteSwap(srcPort);
+        RtlCopyBytes((void*)&dstPort, (void*)((UINT8*)data + ipHeaderSize + 2), 2);
+        dstPort = RtlUshortByteSwap(dstPort);
+        if (packetInfo->direction == DIRECTION_INBOUND) {
+            packetInfo->localPort = dstPort;
+            packetInfo->remotePort = srcPort;
+        }
+        else {
+            packetInfo->localPort = srcPort;
+            packetInfo->remotePort = dstPort;
+        }
+        break;
+    default:
+        packetInfo->localPort = 0;
+        packetInfo->remotePort = 0;
     }
 
     // free if copied
@@ -390,58 +399,59 @@ FWP_ACTION_TYPE classifySingle(
 
 
     switch (verdict) {
-        case PORTMASTER_VERDICT_DROP:
-            INFO("PORTMASTER_VERDICT_DROP: %s", printPacketInfo(packetInfo));
-            return FWP_ACTION_BLOCK;
+    case PORTMASTER_VERDICT_DROP:
+        INFO("PORTMASTER_VERDICT_DROP: %s", printPacketInfo(packetInfo));
+        return FWP_ACTION_BLOCK;
 
-        case PORTMASTER_VERDICT_BLOCK:
-            INFO("PORTMASTER_VERDICT_BLOCK: %s", printPacketInfo(packetInfo));
-            sendBlockPacketFromCallout(packetInfo, nb, ipHeaderSize);
-            return FWP_ACTION_BLOCK;
+    case PORTMASTER_VERDICT_BLOCK:
+        INFO("PORTMASTER_VERDICT_BLOCK: %s", printPacketInfo(packetInfo));
+        sendBlockPacketFromCallout(packetInfo, nb, ipHeaderSize);
+        return FWP_ACTION_BLOCK;
 
-        case PORTMASTER_VERDICT_ACCEPT:
-            INFO("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
-            return FWP_ACTION_PERMIT;
+    case PORTMASTER_VERDICT_ACCEPT:
+        // INFO("PORTMASTER_VERDICT_ACCEPT: %s", printPacketInfo(packetInfo));
+        return FWP_ACTION_PERMIT;
 
-        case PORTMASTER_VERDICT_REDIR_DNS:
-            INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", printPacketInfo(packetInfo));
-            redirectPacketFromCallout(packetInfo, redirInfo, nb, ipHeaderSize, true);
-            return FWP_ACTION_NONE; // We use FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
+    case PORTMASTER_VERDICT_REDIR_DNS:
+        INFO("PORTMASTER_VERDICT_REDIR_DNS: %s", printPacketInfo(packetInfo));
+        redirectPacketFromCallout(packetInfo, redirInfo, nb, ipHeaderSize, true);
+        return FWP_ACTION_NONE; // We use FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
 
-        case PORTMASTER_VERDICT_REDIR_TUNNEL:
-            INFO("PORTMASTER_VERDICT_REDIR_TUNNEL: %s", printPacketInfo(packetInfo));
-            redirectPacketFromCallout(packetInfo, redirInfo, nb, ipHeaderSize, false);
-            return FWP_ACTION_NONE; // We use FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
+    case PORTMASTER_VERDICT_REDIR_TUNNEL:
+        INFO("PORTMASTER_VERDICT_REDIR_TUNNEL: %s", printPacketInfo(packetInfo));
+        redirectPacketFromCallout(packetInfo, redirInfo, nb, ipHeaderSize, false);
+        return FWP_ACTION_NONE; // We use FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
 
-        case PORTMASTER_VERDICT_GET:
-            INFO("PORTMASTER_VERDICT_GET: %s", printPacketInfo(packetInfo));
-            // Continue with operation to send verdict request.
+    case PORTMASTER_VERDICT_GET:
+        INFO("PORTMASTER_VERDICT_GET: %s", printPacketInfo(packetInfo));
+        // Continue with operation to send verdict request.
 
-            // We will return FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
-            // classifyMultiple will block and absorb the packet for us.
-            // We need to copy the packet here to continue.
-            // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
-            break;
+        // We will return FWP_ACTION_NONE to signal classifyMultiple that the packet was already fully handled.
+        // classifyMultiple will block and absorb the packet for us.
+        // We need to copy the packet here to continue.
+        // Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/types-of-callouts
+        break;
 
-        case PORTMASTER_VERDICT_ERROR:
-            ERR("PORTMASTER_VERDICT_ERROR");
-            return FWP_ACTION_BLOCK;
+    case PORTMASTER_VERDICT_ERROR:
+        ERR("PORTMASTER_VERDICT_ERROR");
+        return FWP_ACTION_BLOCK;
 
-        default:
-            WARN("unknown verdict: 0x%x {%s}", printPacketInfo(packetInfo));
-            return FWP_ACTION_BLOCK;
+    default:
+        WARN("unknown verdict: 0x%x {%s}", printPacketInfo(packetInfo));
+        return FWP_ACTION_BLOCK;
     }
 
     // Handle packet of unknown connection.
     {
-        DataEntry *dentry = NULL;
+        DataEntry* dentry = NULL;
         bool fastTracked = false;
         int rc = 0;
 
         // Get the process ID.
         if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_PROCESS_ID)) {
             packetInfo->processID = inMetaValues->processId;
-        } else {
+        }
+        else {
             packetInfo->processID = 0;
         }
 
@@ -457,12 +467,13 @@ FWP_ACTION_TYPE classifySingle(
             packetInfo->localIP[1] == packetInfo->remoteIP[1] &&
             packetInfo->localIP[2] == packetInfo->remoteIP[2] &&
             packetInfo->localIP[3] == packetInfo->remoteIP[3]
-        ) {
+            ) {
             fastTracked = true;
             packetInfo->flags |= PM_STATUS_FAST_TRACK_PERMITTED;
 
             INFO("Fast-tracking %s", printPacketInfo(packetInfo));
-        } else {
+        }
+        else {
             INFO("Getting verdict for %s", printPacketInfo(packetInfo));
         }
 
@@ -472,7 +483,7 @@ FWP_ACTION_TYPE classifySingle(
             ERR("Insufficient Resources for allocating dentry");
             return FWP_ACTION_NONE;
         }
-        PortmasterPacketInfo *copiedPacketInfo = portmasterMalloc(sizeof(PortmasterPacketInfo), false);
+        PortmasterPacketInfo* copiedPacketInfo = portmasterMalloc(sizeof(PortmasterPacketInfo), false);
         if (!copiedPacketInfo) {
             ERR("Insufficient Resources for allocating copiedPacketInfo");
             // TODO: free other allocated memory.
@@ -484,7 +495,7 @@ FWP_ACTION_TYPE classifySingle(
         // If fast-tracked, add verdict to cache immediately.
         if (fastTracked) {
             // Add to verdict cache
-            PortmasterPacketInfo *packetInfoToFree = NULL;
+            PortmasterPacketInfo* packetInfoToFree = NULL;
             rc = verdictCacheAdd(verdictCache, copiedPacketInfo, PORTMASTER_VERDICT_ACCEPT, &packetInfoToFree);
 
             // Free returned packet info.
@@ -500,7 +511,8 @@ FWP_ACTION_TYPE classifySingle(
                 return FWP_ACTION_NONE;
             }
 
-        } else {
+        }
+        else {
             // If not fast-tracked, copy the packet and register it.
 
             //Inbound traffic requires special treatment - this bit shifting is a special source of error ;-)
@@ -529,7 +541,7 @@ FWP_ACTION_TYPE classifySingle(
             }
 
             // Register packet.
-            PortmasterPacketInfo *packetInfoToFree = NULL;
+            PortmasterPacketInfo* packetInfoToFree = NULL;
             void* dataToFree = NULL;
 
             DEBUG("trying to register packet");
@@ -555,11 +567,11 @@ FWP_ACTION_TYPE classifySingle(
 
 void classifyMultiple(
     PortmasterPacketInfo* packetInfo,
-    VerdictCache *verdictCache,
+    VerdictCache* verdictCache,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     void* layerData,
     FWPS_CLASSIFY_OUT* classifyOut
-    ) {
+) {
 
     /*
      * The classifyFn may receive multiple netbuffer lists (chained), which in turn may each have multiple netbuffers.
@@ -570,30 +582,70 @@ void classifyMultiple(
      * Source: https://docs.microsoft.com/en-us/windows-hardware/drivers/network/packet-indication-format
      */
 
-    /*
-     * All NET_BUFFERs in a NET_BUFFER_LIST always belong to the same flow,
-     * which is identified by the five-tuple of TCP/IP (Source IP Address,
-     * Destination IP Address, Source Port, Destination Port, and Protocol).
-     * Source (ish): https://docs.microsoft.com/en-us/windows/win32/fwp/ale-stateful-filtering
-     */
+     /*
+      * All NET_BUFFERs in a NET_BUFFER_LIST always belong to the same flow,
+      * which is identified by the five-tuple of TCP/IP (Source IP Address,
+      * Destination IP Address, Source Port, Destination Port, and Protocol).
+      * Source (ish): https://docs.microsoft.com/en-us/windows/win32/fwp/ale-stateful-filtering
+      */
 
-    // First, run checks and get data that applies to all packets.
+      // First, run checks and get data that applies to all packets.
 
-    // sanity check
+      // sanity check
     if (classifyOut == NULL) {
         ERR("Missing classifyOut");
         return;
     }
-    if (packetInfo == NULL || verdictCache == NULL|| inMetaValues == NULL || layerData == NULL) {
+    if (packetInfo == NULL || verdictCache == NULL || inMetaValues == NULL || layerData == NULL) {
         ERR("Invalid parameters");
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
     }
 
-    if(wasPacketInjected(packetInfo, layerData)) {
+    // Get injection handle.
+    HANDLE handle = getInjectionHandleForPacket(packetInfo);
+
+    // Interpret layer data as netbuffer list and check if it's a looping packet.
+    // Packets created/injected by us will loop back to us.
+    PNET_BUFFER_LIST nbl = (PNET_BUFFER_LIST)layerData;
+    FWPS_PACKET_INJECTION_STATE injectionState = FwpsQueryPacketInjectionState(handle, nbl, NULL);
+    if (injectionState == FWPS_PACKET_INJECTED_BY_SELF ||
+        injectionState == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
         classifyOut->actionType = FWP_ACTION_PERMIT;
+
+        // We must always hard permit here, as the Windows Firewall sometimes
+        // blocks our injected packets.
+        // The follow-up (directly accepted) packets are not blocked.
+        // Note: Hard Permit is now the default and is set immediately in the
+        // callout.
+
+        INFO("packet was in loop, injectionState= %d ", injectionState);
         return;
     }
+
+    // Get block injection handle.
+    handle = getBlockedPacketInjectHandle(packetInfo);
+    injectionState = FwpsQueryPacketInjectionState(handle, nbl, NULL);
+    if (injectionState == FWPS_PACKET_INJECTED_BY_SELF ||
+        injectionState == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF) {
+        classifyOut->actionType = FWP_ACTION_PERMIT;
+
+        // We must always hard permit here, as the Windows Firewall sometimes
+        // blocks our injected packets.
+        // The follow-up (directly accepted) packets are not blocked.
+        // Note: Hard Permit is now the default and is set immediately in the
+        // callout.
+
+        INFO("blocked packet was in loop, injectionState= %d ", injectionState);
+        return;
+    }
+
+#ifdef DEBUG_ON
+    // Print if packet is injected by someone else for debugging purposes.
+    if (injectionState == FWPS_PACKET_INJECTED_BY_OTHER) {
+        INFO("packet was injected by other, injectionState= %d ", injectionState);
+    }
+#endif // DEBUG
 
     // Permit fragmented packets.
     // But of course not the first one, we are checking that one!
@@ -608,7 +660,8 @@ void classifyMultiple(
     UINT32 ipHeaderSize = 0;
     if (FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_IP_HEADER_SIZE)) {
         ipHeaderSize = inMetaValues->ipHeaderSize;
-    } else {
+    }
+    else {
         ERR("inMetaValues does not have ipHeaderSize");
         classifyOut->actionType = FWP_ACTION_BLOCK;
         return;
@@ -625,7 +678,6 @@ void classifyMultiple(
     // Iterate over net buffer lists.
     UINT32 nblLoopI = 0;
     UINT32 nbLoopI = 0;
-    PNET_BUFFER_LIST nbl = (PNET_BUFFER_LIST) layerData;
     for (; nbl != NULL; nbl = NET_BUFFER_LIST_NEXT_NBL(nbl)) {
 
         // Get first netbuffer from list.
@@ -672,7 +724,7 @@ void classifyMultiple(
                 // same verdict, as all packets in an NBL belong to the same
                 // connection. So we can directly accept all of them at once.
                 if (nblLoopI == 1 && nbLoopI == 1 && NET_BUFFER_LIST_NEXT_NBL(nbl) == NULL) {
-                    #ifdef DEBUG_ON
+#ifdef DEBUG_ON
                     for (nb = NET_BUFFER_NEXT_NB(nb); nb != NULL; nb = NET_BUFFER_NEXT_NB(nb)) {
                         // Loop guard.
                         nbLoopI++;
@@ -683,7 +735,7 @@ void classifyMultiple(
                         }
                     }
                     DEBUG("permitting whole NBL with %d NBs", nbLoopI);
-                    #endif // DEBUG
+#endif // DEBUG
                     classifyOut->actionType = FWP_ACTION_PERMIT;
                     return;
                 }
@@ -1244,6 +1296,187 @@ void classifyALEInboundIPv6(
     dentry->packet = packetInfo;
 
     /* queuedEntries = */ KeInsertQueue(globalIOQueue, &(dentry->entry));
+}
+
+void classifyStreamIPv4(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut) {
+
+    UNREFERENCED_PARAMETER(inMetaValues);
+    UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(classifyOut);
+
+    // Sanity check
+    if (!inFixedValues || !inMetaValues) {
+        ERR("Invalid parameters");
+        return;
+    }
+
+    PortmasterPacketInfo packetInfo = {0};
+    packetInfo.ipV6 = 0;
+    packetInfo.localIP[0] = inFixedValues->incomingValue[FWPS_FIELD_STREAM_V4_IP_LOCAL_ADDRESS].value.uint32;
+    packetInfo.localPort = inFixedValues->incomingValue[FWPS_FIELD_STREAM_V4_IP_LOCAL_PORT].value.uint16;
+    packetInfo.remoteIP[0] = inFixedValues->incomingValue[FWPS_FIELD_STREAM_V4_IP_REMOTE_ADDRESS].value.uint32;
+    packetInfo.remotePort = inFixedValues->incomingValue[FWPS_FIELD_STREAM_V4_IP_REMOTE_PORT].value.uint16;
+    packetInfo.protocol = PROTOCOL_TCP;
+
+    FWPS_STREAM_CALLOUT_IO_PACKET *ioPacket = (FWPS_STREAM_CALLOUT_IO_PACKET*)layerData;
+    FWPS_STREAM_DATA *streamData = ioPacket->streamData;
+    // Check stream direction
+    if((streamData->flags & FWPS_STREAM_FLAG_RECEIVE) > 0){
+        packetInfo.direction = DIRECTION_INBOUND;
+    }
+    verdictCacheUpdateStats(verdictCacheV4, &packetInfo, streamData->dataLength);
+}
+
+void classifyStreamIPv6(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut) {
+
+    UNREFERENCED_PARAMETER(inMetaValues);
+    UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(classifyOut);
+    INFO("IPV6 stream layer");
+    // Sanity check
+    if (!inFixedValues || !inMetaValues) {
+        ERR("Invalid parameters");
+        return;
+    }
+
+    PortmasterPacketInfo packetInfo = {0};
+
+    packetInfo.ipV6 = 1;
+    NTSTATUS status = copyIPv6(inFixedValues, FWPS_FIELD_STREAM_V6_IP_LOCAL_ADDRESS, packetInfo.localIP);
+    if (status != STATUS_SUCCESS) {
+        ERR("Could not copy IPv6, status= 0x%x", status);
+        return;
+    } 
+    packetInfo.localPort = inFixedValues->incomingValue[FWPS_FIELD_STREAM_V6_IP_LOCAL_PORT].value.uint16;
+
+    status = copyIPv6(inFixedValues, FWPS_FIELD_STREAM_V6_IP_REMOTE_ADDRESS, packetInfo.remoteIP);
+    if (status != STATUS_SUCCESS) {
+        ERR("Could not copy IPv6, status= 0x%x", status);
+        return;
+    } 
+    packetInfo.remotePort = inFixedValues->incomingValue[FWPS_FIELD_STREAM_V6_IP_REMOTE_PORT].value.uint16;
+
+    packetInfo.protocol = PROTOCOL_TCP;
+
+    FWPS_STREAM_CALLOUT_IO_PACKET *ioPacket = (FWPS_STREAM_CALLOUT_IO_PACKET*)layerData;
+    FWPS_STREAM_DATA *streamData = ioPacket->streamData;
+
+    // Check stream direction
+    if((streamData->flags & FWPS_STREAM_FLAG_RECEIVE) > 0){
+        packetInfo.direction = DIRECTION_INBOUND;
+    }
+    verdictCacheUpdateStats(verdictCacheV6, &packetInfo, streamData->dataLength);
+    INFO("IPV6 stream layer2");
+}
+
+void classifyDatagramIPv4(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut) {
+
+    UNREFERENCED_PARAMETER(inMetaValues);
+    UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(classifyOut);
+
+    // Sanity check
+    if (!inFixedValues || !inMetaValues) {
+        ERR("Invalid parameters");
+        return;
+    }
+
+    PortmasterPacketInfo packetInfo = {0};
+    packetInfo.ipV6 = 0;
+    packetInfo.localIP[0] = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V4_IP_LOCAL_ADDRESS].value.uint32;
+    packetInfo.localPort = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V4_IP_LOCAL_PORT].value.uint16;
+    packetInfo.remoteIP[0] = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V4_IP_REMOTE_ADDRESS].value.uint32;
+    packetInfo.remotePort = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V4_IP_REMOTE_PORT].value.uint16;
+    packetInfo.protocol = PROTOCOL_UDP;
+
+    packetInfo.direction = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V4_DIRECTION].value.uint8;
+
+    UINT64 payload = 0;
+    PNET_BUFFER_LIST nbl = (PNET_BUFFER_LIST) layerData;
+    for (; nbl != NULL; nbl = NET_BUFFER_LIST_NEXT_NBL(nbl)) {
+
+        // Get first netbuffer from list.
+        PNET_BUFFER nb = NET_BUFFER_LIST_FIRST_NB(nbl);
+        // Iterate over net buffers.
+        for (; nb != NULL; nb = NET_BUFFER_NEXT_NB(nb)) { 
+            payload += nb->DataLength;
+        }
+    }
+    verdictCacheUpdateStats(verdictCacheV4, &packetInfo, payload);
+}
+
+void classifyDatagramIPv6(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut) {
+
+    UNREFERENCED_PARAMETER(inMetaValues);
+    UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(classifyOut);
+    // Sanity check
+    if (!inFixedValues || !inMetaValues) {
+        ERR("Invalid parameters");
+        return;
+    }
+
+    PortmasterPacketInfo packetInfo = {0};
+
+    packetInfo.ipV6 = 1;
+    NTSTATUS status = copyIPv6(inFixedValues, FWPS_FIELD_DATAGRAM_DATA_V6_IP_LOCAL_ADDRESS, packetInfo.localIP);
+    if (status != STATUS_SUCCESS) {
+        ERR("Could not copy IPv6, status= 0x%x", status);
+        return;
+    } 
+    packetInfo.localPort = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V6_IP_LOCAL_PORT].value.uint16;
+
+    status = copyIPv6(inFixedValues, FWPS_FIELD_DATAGRAM_DATA_V6_IP_REMOTE_ADDRESS, packetInfo.remoteIP);
+    if (status != STATUS_SUCCESS) {
+        ERR("Could not copy IPv6, status= 0x%x", status);
+        return;
+    } 
+    packetInfo.remotePort = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V6_IP_REMOTE_PORT].value.uint16;
+
+    packetInfo.protocol = PROTOCOL_UDP;
+
+    // FWPS_STREAM_CALLOUT_IO_PACKET *ioPacket = (FWPS_STREAM_CALLOUT_IO_PACKET*)layerData;
+    // FWPS_STREAM_DATA *streamData = ioPacket->streamData;
+
+    // Check stream direction
+    packetInfo.direction = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V6_DIRECTION].value.uint8;
+    verdictCacheUpdateStats(verdictCacheV6, &packetInfo, 1);
 }
 
 void clearCache() {

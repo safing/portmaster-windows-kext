@@ -46,6 +46,9 @@ typedef struct VerdictCacheItem {
     PortmasterPacketInfo *packetInfo;
     verdict_t verdict;
 
+    UINT64 rx;
+    UINT64 tx;
+
     UT_hash_handle hh;
     UT_hash_handle hhRedirect;
 } VerdictCacheItem;
@@ -464,6 +467,77 @@ verdict_t verdictCacheGet(VerdictCache *verdictCache, PortmasterPacketInfo *pack
 
     KeReleaseInStackQueuedSpinLock(&lockHandle);
     return verdict;
+}
+
+int verdictCacheUpdateStats(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, UINT64 payloadSize) {
+    if(verdictCache == NULL) {
+        return -1;
+    }
+
+    // Lock to check verdict cache.
+    KLOCK_QUEUE_HANDLE lockHandle = {0};
+    KeAcquireInStackQueuedSpinLock(&verdictCache->lock, &lockHandle);
+
+    if(verdictCache->map != NULL) {
+        VerdictCacheItem *item = NULL;
+        VerdictCacheKey key = getCacheKey(packetInfo);
+        HASH_FIND(hh, verdictCache->map, &key, sizeof(VerdictCacheKey), item);
+
+        if(item != NULL && payloadSize > 0) {
+            if(packetInfo->direction == DIRECTION_INBOUND) {
+                item->rx += payloadSize;
+            } else {
+                item->tx += payloadSize;
+            }
+        }
+    }
+
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
+    return 0;
+}
+
+int verdictCacheWriteBandwidthStats(VerdictCache *verdictCache, PortmasterConnection *connections, int size, UINT8 ipv6) {
+    if(verdictCache == NULL) {
+        return -1;
+    }
+    // Lock while reading all entries
+    KLOCK_QUEUE_HANDLE lockHandle = {0};
+    KeAcquireInStackQueuedSpinLock(&verdictCache->lock, &lockHandle);
+    int i = 0;
+    for (VerdictCacheItem *item = verdictCache->map; item != NULL; item = item->hh.next) {
+        // Caller buffer is already full
+        if(i >= size) {
+            continue;
+        }
+
+        // We dont need empty entries
+        if(item->rx == 0 && item->tx == 0) {
+            continue;
+        }
+
+        VerdictCacheKey key = item->key;
+        
+        // Create the connection struct
+        PortmasterConnection connection;
+        memcpy(connection.localIP, &key.localIP, sizeof(UINT32) * 4);
+        memcpy(connection.remoteIP, &key.remoteIP, sizeof(UINT32) * 4);
+        connection.localPort = key.localPort;
+        connection.remotePort = key.remotePort;
+        connection.protocol = key.protocol;
+        connection.ipV6 = ipv6;
+        connection.receivedBytes = item->rx;
+        connection.transmittedBytes = item->tx;
+
+        // Set the value and increment index
+        connections[i] = connection;
+        i += 1;
+
+        // Reset item
+        item->rx = 0;
+        item->tx = 0;
+    }
+    KeReleaseInStackQueuedSpinLock(&lockHandle);
+    return i;
 }
 
 #pragma warning(pop)

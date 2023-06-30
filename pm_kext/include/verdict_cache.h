@@ -89,4 +89,28 @@ int verdictCacheAdd(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo
  *
  */
 verdict_t verdictCacheGet(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, PortmasterPacketInfo **redirInfo);
+
+/**
+ * @brief Copies the cached connection bandwidth info to the connections input array.
+ *
+ * @par    verdictCache = VerdictCache to use
+ * @par    connections = array of PortmasterConnection structs
+ * @par    size = size of the connections array
+ * @par    ipv6 = specifies if the verdict cache is for ipv6
+ * @return number of connection struct writen to the array or -1 for error
+ *
+ */
+int verdictCacheWriteBandwidthStats(VerdictCache *verdictCache, PortmasterConnection *connections, int size, UINT8 ipv6);
+
+/**
+ * @brief Updates bandwidth stats of a connection.
+ *
+ * @par    verdictCache = VerdictCache to use.
+ * @par    packetInfo = contains info about the connection.
+ * @par    payload size = size of the payload
+ * @return -1 on error
+ *
+ */
+int verdictCacheUpdateStats(VerdictCache *verdictCache, PortmasterPacketInfo *packetInfo, UINT64 payloadSize);
+
 #endif // VERDICT_CACHE_H

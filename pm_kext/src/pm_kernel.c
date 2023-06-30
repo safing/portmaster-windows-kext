@@ -76,6 +76,7 @@ PRKQUEUE globalIOQueue = NULL;
 static LARGE_INTEGER ioQueueTimeout;
 #define QUEUE_TIMEOUT_MILI 10000
 
+#define CONNECTIONS_COUNT 1000
 
 /************************************
    Kernel API Functions
@@ -450,6 +451,15 @@ IOCTL_GET_PAYLOAD_EXIT:
             VerdictUpdateInfo *verdictUpdateInfo = (VerdictUpdateInfo*)pBuf;
             updateVerdict(verdictUpdateInfo);
             Irp->IoStatus.Status = STATUS_SUCCESS;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return STATUS_SUCCESS;
+        }
+        case IOCTL_GET_CONNECTIONS_STATS: {
+            UINT32 *arraySize = (UINT32*) pBuf;
+            PortmasterConnection *connections = (PortmasterConnection *) pBuf;
+            int writeCount = getConnectionsStats(connections, *arraySize);
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            Irp->IoStatus.Information = writeCount * sizeof(PortmasterConnection);
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_SUCCESS;
         }
