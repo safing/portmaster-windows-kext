@@ -40,6 +40,16 @@ typedef struct {
     UINT32 packetSize;
 } PortmasterPacketInfo;
 
+typedef struct {
+    UINT32 localIP[4];                  //Source Address, only srcIP[0] if IPv4
+    UINT32 remoteIP[4];                 //Destination Address
+    UINT16 localPort;                   //Source Port
+    UINT16 remotePort;                  //Destination port
+    UINT64 receivedBytes;               //Number of bytes recived on this connection
+    UINT64 transmittedBytes;            //Number of bytes transsmited from this connection
+    UINT8 ipV6;                         //True: IPv6, False: IPv4
+    UINT8 protocol;                     //Protocol (UDP, TCP, ...)
+} PortmasterConnection;
 /*
  * Packet Info Flags
  */
@@ -223,6 +233,9 @@ typedef struct {
 
 #define IOCTL_UPDATE_VERDICT \
     CTL_CODE(SIOCTL_TYPE, 0x806, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
+
+#define IOCTL_GET_CONNECTIONS_STATS \
+    CTL_CODE(SIOCTL_TYPE, 0x807, METHOD_BUFFERED, FILE_READ_DATA|FILE_WRITE_DATA)
 
 /****************************************************************************/
 /* MISC                                                       */

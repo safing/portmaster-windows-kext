@@ -56,6 +56,78 @@ void classifyOutboundIPv6(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut);
 
+void classifyALEOutboundIPv4(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut);
+
+void classifyALEInboundIPv4(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut);
+
+void classifyALEOutboundIPv6(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut);
+
+void classifyALEInboundIPv6(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut);
+
+void classifyStreamIPv4(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut); 
+
+void classifyStreamIPv6(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut); 
+
+void classifyDatagramIPv4(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut);
+
+void classifyDatagramIPv6(
+    const FWPS_INCOMING_VALUES* inFixedValues,
+    const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    void* layerData,
+    const void* classifyContext,
+    const FWPS_FILTER* filter,
+    UINT64 flowContext,
+    FWPS_CLASSIFY_OUT* classifyOut);
+
 NTSTATUS genericNotify(
     FWPS_CALLOUT_NOTIFY_TYPE notifyType,
     const GUID * filterKey,
@@ -66,7 +138,7 @@ void genericFlowDelete(UINT16 layerId, UINT32 calloutId, UINT64 flowContext);
 void respondWithVerdict(UINT32 id, verdict_t verdict);
 PacketCache* getPacketCache();
 int updateVerdict(VerdictUpdateInfo*);
-
+int getConnectionsStats(PortmasterConnection *connections, int size);
 
 void clearCache();
 

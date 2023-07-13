@@ -30,6 +30,24 @@ DEFINE_GUID(PORTMASTER_SUBLAYER_GUID, 0xa87fb472, 0xfc68, 0x4805, 0x85, 0x59, 0x
 #define OUTBOUND_V6_FILTER_NAME        L"PortmasterOutboundV6Filter"
 #define OUTBOUND_V6_FILTER_DESCRIPTION L"This filter is used by the Portmaster to intercept outbound IPv6 traffic."
 
+#define ALE_INBOUND_V4_FILTER_NAME         L"PortmasterALEInboundV4Filter"
+#define ALE_INBOUND_V4_FILTER_DESCRIPTION  L"This filter is used by the Portmaster to monitor inbound IPv4 traffic before the connection is established."
+#define ALE_OUTBOUND_V4_FILTER_NAME         L"PortmasterALEOutboundV4Filter"
+#define ALE_OUTBOUND_V4_FILTER_DESCRIPTION  L"This filter is used by the Portmaster to monitor outbound IPv4 traffic before the connection is established."
+#define ALE_INBOUND_V6_FILTER_NAME         L"PortmasterALEInboundV6Filter"
+#define ALE_INBOUND_V6_FILTER_DESCRIPTION  L"This filter is used by the Portmaster to monitor inbound IPv6 traffic before the connection is established."
+#define ALE_OUTBOUND_V6_FILTER_NAME         L"PortmasterALEOutboundV6Filter"
+#define ALE_OUTBOUND_V6_FILTER_DESCRIPTION  L"This filter is used by the Portmaster to monitor outbound IPv6 traffic before the connection is established."
+
+#define STREAM_V4_FILTER_NAME           L"StreamV4Filter"
+#define STREAM_V4_FILTER_DESCRIPTION    L"The filter is used for handling stream data for IPv4."
+#define STREAM_V6_FILTER_NAME           L"StreamV6Filter"
+#define STREAM_V6_FILTER_DESCRIPTION    L"The filter is used for handling stream data for IPv6."
+#define DATAGRAM_V4_FILTER_NAME         L"DatagramV4Filter"
+#define DATAGRAM_V4_FILTER_DESCRIPTION  L"The filter is used for handling datagram data for IPv4."
+#define DATAGRAM_V6_FILTER_NAME         L"DatagramV6Filter"
+#define DATAGRAM_V6_FILTER_DESCRIPTION  L"The filter is used for handling datagram data for IPv6."
+
 // Callout Names
 #define INBOUND_V4_CALLOUT_NAME         L"PortmasterInboundV4Callout"
 #define INBOUND_V4_CALLOUT_DESCRIPTION  L"This callout is used by the Portmaster to intercept inbound IPv4 traffic."
@@ -40,12 +58,40 @@ DEFINE_GUID(PORTMASTER_SUBLAYER_GUID, 0xa87fb472, 0xfc68, 0x4805, 0x85, 0x59, 0x
 #define OUTBOUND_V6_CALLOUT_NAME        L"PortmasterOutboundV6Callout"
 #define OUTBOUND_V6_CALLOUT_DESCRIPTION L"This callout is used by the Portmaster to intercept outbound IPv6 traffic."
 
+#define ALE_INBOUND_V4_CALLOUT_NAME        L"PortmasterALEInboundV4Callout"
+#define ALE_INBOUND_V4_CALLOUT_DESCRIPTION L"This callout is used by the Portmaster to monitor outbound IPv4 traffic before the connection is established."
+#define ALE_OUTBOUND_V4_CALLOUT_NAME        L"PortmasterALEOutboundV4Callout"
+#define ALE_OUTBOUND_V4_CALLOUT_DESCRIPTION L"This callout is used by the Portmaster to montiror outbound IPv4 traffic before the connection is established."
+#define ALE_INBOUND_V6_CALLOUT_NAME        L"PortmasterALEInboundV6Callout"
+#define ALE_INBOUND_V6_CALLOUT_DESCRIPTION L"This callout is used by the Portmaster to monitor outbound IPv6 traffic before the connection is established."
+#define ALE_OUTBOUND_V6_CALLOUT_NAME        L"PortmasterALEOutboundV6Callout"
+#define ALE_OUTBOUND_V6_CALLOUT_DESCRIPTION L"This callout is used by the Portmaster to monitor outbound IPv6 traffic before the connection is established."
+
+#define STREAM_V4_CALLOUT_NAME          L"StreamV4Callout"
+#define STREAM_V4_CALLOUT_DESCRIPTION   L"This callout is used to handle stream data for IPv4."
+#define STREAM_V6_CALLOUT_NAME          L"StreamV6Callout"
+#define STREAM_V6_CALLOUT_DESCRIPTION   L"This callout is used to handle stream data for IPv6."
+
+#define DATAGRAM_V4_CALLOUT_NAME        L"DatagramV4Callout"
+#define DATAGRAM_V4_CALLOUT_DESCRIPTION L"This callout is used to handle datagram data for IPv4."
+#define DATAGRAM_V6_CALLOUT_NAME        L"DatagramV6Callout"
+#define DATAGRAM_V6_CALLOUT_DESCRIPTION L"This callout is used to handle datagram data for IPv6."
+
 // GUIDs
 DEFINE_GUID(INBOUND_V4_CALLOUT_GUID,  0x05c55149, 0x4732, 0x4857, 0x8d, 0x10, 0xf1, 0x78, 0xf3, 0xa0, 0x6f, 0x8c); // 05c55149-4732-4857-8d10-f178f3a06f8c
 DEFINE_GUID(OUTBOUND_V4_CALLOUT_GUID, 0x41162b9e, 0x8473, 0x4b88, 0xa5, 0xeb, 0x04, 0xcf, 0x1d, 0x27, 0x6b, 0x06); // 41162b9e-8473-4b88-a5eb-04cf1d276b06
 DEFINE_GUID(INBOUND_V6_CALLOUT_GUID,  0xceff1df7, 0x2baa, 0x44c5, 0xa6, 0xe5, 0x73, 0xa9, 0x58, 0x49, 0xbc, 0xff); // ceff1df7-2baa-44c5-a6e5-73a95849bcff
 DEFINE_GUID(OUTBOUND_V6_CALLOUT_GUID, 0x32bad112, 0x6af4, 0x4109, 0x80, 0x9b, 0xc0, 0x75, 0x70, 0xba, 0x01, 0xb4); // 32bad112-6af4-4109-809b-c07570ba01b4
 
+DEFINE_GUID(ALE_INBOUND_V4_CALLOUT_GUID,  0xe36216c5, 0x7b33, 0x40ee, 0xb0, 0x54, 0xfb, 0x1b, 0xc7, 0xde, 0xcc, 0x19); // e36216c5-7b33-40ee-b054-fb1bc7decc19
+DEFINE_GUID(ALE_OUTBOUND_V4_CALLOUT_GUID, 0x029819fe, 0x97d9, 0x4e5f, 0xa0, 0xfb, 0x78, 0xef, 0x5c, 0xef, 0x8a, 0xc4); // 029819fe-97d9-4e5f-a0fb-78ef5cef8ac4
+DEFINE_GUID(ALE_INBOUND_V6_CALLOUT_GUID,  0x77ea9927, 0x66e7, 0x4cf8, 0x9e, 0xa2, 0x94, 0x1e, 0xdf, 0x2f, 0xae, 0x63); // 77ea9927-66e7-4cf8-9ea2-941edf2fae63
+DEFINE_GUID(ALE_OUTBOUND_V6_CALLOUT_GUID, 0xd6b0213a, 0x337a, 0x4cc6, 0x84, 0xc0, 0xcc, 0x60, 0x73, 0x1b, 0x9e, 0x2a); // d6b0213a-337a-4cc6-84c0-cc60731b9e2a
+
+DEFINE_GUID(STREAM_V4_CALLOUT_GUID, 0x525dac52, 0x65de, 0x4a6f, 0xb5, 0x46, 0x2b, 0x1f, 0x3b, 0xc2, 0x26, 0xdb); // 525dac52-65de-4a6f-b546-2b1f3bc226db
+DEFINE_GUID(STREAM_V6_CALLOUT_GUID, 0x4321ddf9, 0x57b2, 0x4391, 0x8f, 0xc5, 0xc5, 0xb4, 0x6c, 0x65, 0x55, 0x87); // 4321ddf9-57b2-4391-8fc5-c5b46c655587
+DEFINE_GUID(DATAGRAM_V4_CALLOUT_GUID, 0xa6be3096, 0x66bf, 0x4959, 0x86, 0x29, 0x1c, 0x3a, 0x4c, 0x40, 0xc3, 0x1e); // a6be3096-66bf-4959-8629-1c3a4c40c31e
+DEFINE_GUID(DATAGRAM_V6_CALLOUT_GUID, 0xd55cb395, 0x29a1, 0x4716, 0x8c, 0xb1, 0x65, 0xc8, 0x88, 0x99, 0x5f, 0x54); // d55cb395-29a1-4716-8cb1-65c888995f54
 extern HANDLE filterEngineHandle;
 
 // Assigned filter IDs by engine
@@ -54,6 +100,15 @@ UINT64 outboundV4FilterID;
 UINT64 inboundV6FilterID;
 UINT64 outboundV6FilterID;
 
+UINT64 aleInboundV4FilterID;
+UINT64 aleOutboundV4FilterID;
+UINT64 aleInboundV6FilterID;
+UINT64 aleOutboundV6FilterID;
+
+UINT64 streamV4FilterID;
+UINT64 streamV6FilterID;
+UINT64 datagramV4FilterID;
+UINT64 datagramV6FilterID;
 
 // Assigned callout IDs by engine
 UINT32 inboundV4CalloutID;
@@ -61,11 +116,31 @@ UINT32 outboundV4CalloutID;
 UINT32 inboundV6CalloutID;
 UINT32 outboundV6CalloutID;
 
+UINT32 aleInboundV4CalloutID;
+UINT32 aleOutboundV4CalloutID;
+UINT32 aleInboundV6CalloutID;
+UINT32 aleOutboundV6CalloutID;
+
+UINT32 streamV4CalloutID;
+UINT32 streamV6CalloutID;
+UINT32 datagramV4CalloutID;
+UINT32 datagramV6CalloutID;
+
 // Registered?
 bool inboundV4CalloutRegistered = false;
 bool outboundV4CalloutRegistered = false;
 bool inboundV6CalloutRegistered = false;
 bool outboundV6CalloutRegistered = false;
+
+bool aleInboundV4CalloutRegistered = false;
+bool aleOutboundV4CalloutRegistered = false;
+bool aleInboundV6CalloutRegistered = false;
+bool aleOutboundV6CalloutRegistered = false;
+
+bool streamV4CalloutRegistered = false;
+bool streamV6CalloutRegistered = false;
+bool datagramV4CalloutRegistered = false;
+bool datagramV6CalloutRegistered = false;
 
 /** PORTMASTER SUBLAYER **/
 
@@ -124,6 +199,78 @@ NTSTATUS registerFilter(
     return status;
 }
 
+NTSTATUS registerFilterALE(
+    FWPM_FILTER* filter,
+    UINT64* filterID,
+    wchar_t* filterName,
+    wchar_t* filterDescription,
+    const GUID calloutGUID,
+    const GUID layer
+) {
+    filter->displayData.name = filterName;
+    filter->displayData.description = filterDescription;
+    filter->action.type = FWP_ACTION_CALLOUT_INSPECTION;
+    filter->subLayerKey = PORTMASTER_SUBLAYER_GUID;
+    filter->weight.type = FWP_UINT8;
+    filter->weight.uint8 = 15;     // The weight of this filter within its sublayer
+    filter->flags = FWPM_FILTER_FLAG_NONE;
+    filter->numFilterConditions = 0;    // If you specify 0, this filter invokes its callout for all traffic in its layer
+    filter->layerKey = layer;   // This layer must match the layer that ExampleCallout is registered to
+    filter->action.calloutKey = calloutGUID;
+    NTSTATUS status = FwpmFilterAdd(filterEngineHandle, filter, NULL, filterID);
+    if (!NT_SUCCESS(status)) {
+        ERR("Could not register Portmaster filter '%ls' functions: rc=0x%08x", filterName, status);
+    } else {
+        INFO("Portmaster filter registered");
+    }
+
+    // From https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/fwpsk/nf-fwpsk-fwpscalloutregister0
+    // A callout and filters that specify the callout for the filter's action can be added to the filter engine before a callout driver registers the callout with the filter engine. In this situation, filters with an action type of FWP_ACTION_CALLOUT_TERMINATING or FWP_ACTION_CALLOUT_UNKNOWN are treated as FWP_ACTION_BLOCK, and filters with an action type of FWP_ACTION_CALLOUT_INSPECTION are ignored until the callout is registered with the filter engine.
+
+    // FWP_ACTION_CALLOUT_TERMINATING directly permits or blocks traffic without asking anyone else.
+    // It cannot FWP_ACTION_CONTINUE to the next filter.
+    // Source: https://docs.microsoft.com/en-us/windows/win32/api/fwpstypes/ns-fwpstypes-fwps_action0
+
+    return status;
+}
+
+NTSTATUS registerFilterStream(
+    FWPM_FILTER* filter,
+    UINT64* filterID,
+    wchar_t* filterName,
+    wchar_t* filterDescription,
+    const GUID calloutGUID,
+    const GUID layer
+) {
+    filter->displayData.name = filterName;
+    filter->displayData.description = filterDescription;
+    filter->action.type = FWP_ACTION_CALLOUT_INSPECTION;
+    filter->subLayerKey = PORTMASTER_SUBLAYER_GUID;
+    filter->weight.type = FWP_UINT8;
+    filter->weight.uint8 = 15;     // The weight of this filter within its sublayer
+    filter->flags = FWPM_FILTER_FLAG_NONE;
+    filter->numFilterConditions = 0;    // If you specify 0, this filter invokes its callout for all traffic in its layer
+    filter->layerKey = layer;   // This layer must match the layer that ExampleCallout is registered to
+    filter->action.calloutKey = calloutGUID;
+    // FWPM_FILTER_CONDITION filterConditions[1] = {0};
+    // filterConditions[0].matchType = FWP_MATCH_GREATER;
+    NTSTATUS status = FwpmFilterAdd(filterEngineHandle, filter, NULL, filterID);
+    if (!NT_SUCCESS(status)) {
+        ERR("Could not register Portmaster filter '%ls' functions: rc=0x%08x", filterName, status);
+    } else {
+        INFO("Portmaster filter registered");
+    }
+
+    // From https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/fwpsk/nf-fwpsk-fwpscalloutregister0
+    // A callout and filters that specify the callout for the filter's action can be added to the filter engine before a callout driver registers the callout with the filter engine. In this situation, filters with an action type of FWP_ACTION_CALLOUT_TERMINATING or FWP_ACTION_CALLOUT_UNKNOWN are treated as FWP_ACTION_BLOCK, and filters with an action type of FWP_ACTION_CALLOUT_INSPECTION are ignored until the callout is registered with the filter engine.
+
+    // FWP_ACTION_CALLOUT_TERMINATING directly permits or blocks traffic without asking anyone else.
+    // It cannot FWP_ACTION_CONTINUE to the next filter.
+    // Source: https://docs.microsoft.com/en-us/windows/win32/api/fwpstypes/ns-fwpstypes-fwps_action0
+
+    return status;
+}
+
 NTSTATUS registerInboundV4Filter(DEVICE_OBJECT* wdmDevice) {
     UNREFERENCED_PARAMETER(wdmDevice);
     FWPM_FILTER filter = { 0 };
@@ -146,6 +293,56 @@ NTSTATUS registerOutboundV6Filter(DEVICE_OBJECT* wdmDevice) {
     UNREFERENCED_PARAMETER(wdmDevice);
     FWPM_FILTER filter = { 0 };
     return registerFilter(&filter, &outboundV6FilterID, OUTBOUND_V6_FILTER_NAME, OUTBOUND_V6_FILTER_DESCRIPTION, OUTBOUND_V6_CALLOUT_GUID, FWPM_LAYER_OUTBOUND_IPPACKET_V6);
+}
+
+// ALE layer
+NTSTATUS registerALEInboundV4Filter(DEVICE_OBJECT* wdmDevice) {
+    UNREFERENCED_PARAMETER(wdmDevice);
+    FWPM_FILTER filter = { 0 };
+    return registerFilterALE(&filter, &aleInboundV4FilterID, ALE_INBOUND_V4_FILTER_NAME, ALE_INBOUND_V4_FILTER_DESCRIPTION, ALE_INBOUND_V4_CALLOUT_GUID, FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4);
+}
+
+NTSTATUS registerALEOutboundV4Filter(DEVICE_OBJECT* wdmDevice) {
+    UNREFERENCED_PARAMETER(wdmDevice);
+    FWPM_FILTER filter = { 0 };
+    return registerFilterALE(&filter, &aleOutboundV4FilterID, ALE_OUTBOUND_V4_FILTER_NAME, ALE_OUTBOUND_V4_FILTER_DESCRIPTION, ALE_OUTBOUND_V4_CALLOUT_GUID, FWPM_LAYER_ALE_AUTH_CONNECT_V4);
+}
+
+NTSTATUS registerALEInboundV6Filter(DEVICE_OBJECT* wdmDevice) {
+    UNREFERENCED_PARAMETER(wdmDevice);
+    FWPM_FILTER filter = { 0 };
+    return registerFilterALE(&filter, &aleInboundV6FilterID, ALE_INBOUND_V6_FILTER_NAME, ALE_INBOUND_V6_FILTER_DESCRIPTION, ALE_INBOUND_V6_CALLOUT_GUID, FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6);
+}
+
+NTSTATUS registerALEOutboundV6Filter(DEVICE_OBJECT* wdmDevice) {
+    UNREFERENCED_PARAMETER(wdmDevice);
+    FWPM_FILTER filter = { 0 };
+    return registerFilterALE(&filter, &aleOutboundV6FilterID, ALE_OUTBOUND_V6_FILTER_NAME, ALE_OUTBOUND_V6_FILTER_DESCRIPTION, ALE_OUTBOUND_V6_CALLOUT_GUID, FWPM_LAYER_ALE_AUTH_CONNECT_V6);
+}
+
+// Stream layser
+NTSTATUS registerStreamV4Filter(DEVICE_OBJECT* wdmDevice) {
+    UNREFERENCED_PARAMETER(wdmDevice);
+    FWPM_FILTER filter = { 0 };
+    return registerFilterStream(&filter, &streamV4FilterID, STREAM_V4_FILTER_NAME, STREAM_V4_FILTER_DESCRIPTION, STREAM_V4_CALLOUT_GUID, FWPM_LAYER_STREAM_V4);
+}
+
+NTSTATUS registerStreamV6Filter(DEVICE_OBJECT* wdmDevice) {
+    UNREFERENCED_PARAMETER(wdmDevice);
+    FWPM_FILTER filter = { 0 };
+    return registerFilterStream(&filter, &streamV6FilterID, STREAM_V6_FILTER_NAME, STREAM_V6_FILTER_DESCRIPTION, STREAM_V6_CALLOUT_GUID, FWPM_LAYER_STREAM_V6);
+}
+
+NTSTATUS registerDatagramV4Filter(DEVICE_OBJECT* wdmDevice) {
+    UNREFERENCED_PARAMETER(wdmDevice);
+    FWPM_FILTER filter = { 0 };
+    return registerFilterStream(&filter, &datagramV4FilterID, DATAGRAM_V4_FILTER_NAME, DATAGRAM_V4_FILTER_DESCRIPTION, DATAGRAM_V4_CALLOUT_GUID, FWPM_LAYER_DATAGRAM_DATA_V4);
+}
+
+NTSTATUS registerDatagramV6Filter(DEVICE_OBJECT* wdmDevice) {
+    UNREFERENCED_PARAMETER(wdmDevice);
+    FWPM_FILTER filter = { 0 };
+    return registerFilterStream(&filter, &datagramV6FilterID, DATAGRAM_V6_FILTER_NAME, DATAGRAM_V6_FILTER_DESCRIPTION, DATAGRAM_V6_CALLOUT_GUID, FWPM_LAYER_DATAGRAM_DATA_V6);
 }
 
 /** PORTMASTER CALLOUTS **/
@@ -184,7 +381,7 @@ NTSTATUS registerCallout(
     sCallout->flowDeleteFn = genericFlowDelete;
     NTSTATUS status = FwpsCalloutRegister((void *)wdmDevice, sCallout, calloutID);
     if (!NT_SUCCESS(status)) {
-        ERR("Could not register PortmasterInboundV4Callout functions: rc=0x%08x", status);
+        ERR("Could not register %s functions: rc=0x%08x", calloutName, status);
         return status;
     }
 
@@ -275,8 +472,152 @@ NTSTATUS registerOutboundV6Callout(DEVICE_OBJECT* wdmDevice) {
         );
 }
 
-/** EXPORTED **/
+// ALE layers
+NTSTATUS registerALEInboundV4Callout(DEVICE_OBJECT* wdmDevice) {
+    FWPS_CALLOUT sCallout = { 0 };
+    FWPM_CALLOUT mCallout = { 0 };
+    FWPM_DISPLAY_DATA displayData = { 0 };
+    return registerCallout(wdmDevice,
+            &sCallout,
+            &mCallout,
+            &displayData,
+            &aleInboundV4CalloutID,
+            (BOOL*) &aleInboundV4CalloutRegistered,
+            ALE_INBOUND_V4_CALLOUT_NAME,
+            ALE_INBOUND_V4_CALLOUT_DESCRIPTION,
+            ALE_INBOUND_V4_CALLOUT_GUID,
+            &classifyALEInboundIPv4,
+            FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4
+        );
+}
 
+NTSTATUS registerALEOutboundV4Callout(DEVICE_OBJECT* wdmDevice) {
+    FWPS_CALLOUT sCallout = { 0 };
+    FWPM_CALLOUT mCallout = { 0 };
+    FWPM_DISPLAY_DATA displayData = { 0 };
+    return registerCallout(wdmDevice,
+            &sCallout,
+            &mCallout,
+            &displayData,
+            &aleOutboundV4CalloutID,
+            (BOOL*) &aleOutboundV4CalloutRegistered,
+            ALE_OUTBOUND_V4_CALLOUT_NAME,
+            ALE_OUTBOUND_V4_CALLOUT_DESCRIPTION,
+            ALE_OUTBOUND_V4_CALLOUT_GUID,
+            &classifyALEOutboundIPv4,
+            FWPM_LAYER_ALE_AUTH_CONNECT_V4
+        );
+}
+
+NTSTATUS registerALEInboundV6Callout(DEVICE_OBJECT* wdmDevice) {
+    FWPS_CALLOUT sCallout = { 0 };
+    FWPM_CALLOUT mCallout = { 0 };
+    FWPM_DISPLAY_DATA displayData = { 0 };
+    return registerCallout(wdmDevice,
+            &sCallout,
+            &mCallout,
+            &displayData,
+            &aleInboundV6CalloutID,
+            (BOOL*) &aleInboundV6CalloutRegistered,
+            ALE_INBOUND_V6_CALLOUT_NAME,
+            ALE_INBOUND_V6_CALLOUT_DESCRIPTION,
+            ALE_INBOUND_V6_CALLOUT_GUID,
+            &classifyALEInboundIPv6,
+            FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6
+        );
+}
+
+NTSTATUS registerALEOutboundV6Callout(DEVICE_OBJECT* wdmDevice) {
+    FWPS_CALLOUT sCallout = { 0 };
+    FWPM_CALLOUT mCallout = { 0 };
+    FWPM_DISPLAY_DATA displayData = { 0 };
+    return registerCallout(wdmDevice,
+            &sCallout,
+            &mCallout,
+            &displayData,
+            &aleOutboundV6CalloutID,
+            (BOOL*) &aleOutboundV6CalloutRegistered,
+            ALE_OUTBOUND_V6_CALLOUT_NAME,
+            ALE_OUTBOUND_V6_CALLOUT_DESCRIPTION,
+            ALE_OUTBOUND_V6_CALLOUT_GUID,
+            &classifyALEOutboundIPv6,
+            FWPM_LAYER_ALE_AUTH_CONNECT_V6
+        );
+}
+
+NTSTATUS registerStreamV4Callout(DEVICE_OBJECT* wdmDevice) {
+    FWPS_CALLOUT sCallout = { 0 };
+    FWPM_CALLOUT mCallout = { 0 };
+    FWPM_DISPLAY_DATA displayData = { 0 };
+    return registerCallout(wdmDevice,
+            &sCallout,
+            &mCallout,
+            &displayData,
+            &streamV4CalloutID,
+            (BOOL*) &streamV4CalloutRegistered,
+            STREAM_V4_CALLOUT_NAME,
+            STREAM_V4_CALLOUT_DESCRIPTION,
+            STREAM_V4_CALLOUT_GUID,
+            &classifyStreamIPv4,
+            FWPM_LAYER_STREAM_V4
+        );
+}
+
+NTSTATUS registerStreamV6Callout(DEVICE_OBJECT* wdmDevice) {
+    FWPS_CALLOUT sCallout = { 0 };
+    FWPM_CALLOUT mCallout = { 0 };
+    FWPM_DISPLAY_DATA displayData = { 0 };
+    return registerCallout(wdmDevice,
+            &sCallout,
+            &mCallout,
+            &displayData,
+            &streamV6CalloutID,
+            (BOOL*) &streamV6CalloutRegistered,
+            STREAM_V6_CALLOUT_NAME,
+            STREAM_V6_CALLOUT_DESCRIPTION,
+            STREAM_V6_CALLOUT_GUID,
+            &classifyStreamIPv6,
+            FWPM_LAYER_STREAM_V6
+        );
+}
+
+NTSTATUS registerDatagramV4Callout(DEVICE_OBJECT* wdmDevice) {
+    FWPS_CALLOUT sCallout = { 0 };
+    FWPM_CALLOUT mCallout = { 0 };
+    FWPM_DISPLAY_DATA displayData = { 0 };
+    return registerCallout(wdmDevice,
+            &sCallout,
+            &mCallout,
+            &displayData,
+            &datagramV4CalloutID,
+            (BOOL*) &datagramV4CalloutRegistered,
+            DATAGRAM_V4_CALLOUT_NAME,
+            DATAGRAM_V4_CALLOUT_DESCRIPTION,
+            DATAGRAM_V4_CALLOUT_GUID,
+            &classifyDatagramIPv4,
+            FWPM_LAYER_DATAGRAM_DATA_V4
+        );
+}
+
+NTSTATUS registerDatagramV6Callout(DEVICE_OBJECT* wdmDevice) {
+    FWPS_CALLOUT sCallout = { 0 };
+    FWPM_CALLOUT mCallout = { 0 };
+    FWPM_DISPLAY_DATA displayData = { 0 };
+    return registerCallout(wdmDevice,
+            &sCallout,
+            &mCallout,
+            &displayData,
+            &datagramV6CalloutID,
+            (BOOL*) &datagramV6CalloutRegistered,
+            DATAGRAM_V6_CALLOUT_NAME,
+            DATAGRAM_V6_CALLOUT_DESCRIPTION,
+            DATAGRAM_V6_CALLOUT_GUID,
+            &classifyDatagramIPv6,
+            FWPM_LAYER_DATAGRAM_DATA_V6
+        );
+}
+
+/** EXPORTED **/
 NTSTATUS registerWFPStack(DEVICE_OBJECT* wdmDevice) {
     NTSTATUS status = STATUS_SUCCESS;
 
@@ -309,6 +650,47 @@ NTSTATUS registerWFPStack(DEVICE_OBJECT* wdmDevice) {
         return status;
     }
 
+    // ALE layers
+    status = registerALEInboundV4Callout(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = registerALEOutboundV4Callout(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = registerALEInboundV6Callout(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = registerALEOutboundV6Callout(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    // Stream laysers
+    status = registerStreamV4Callout(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = registerStreamV6Callout(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = registerDatagramV4Callout(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = registerDatagramV6Callout(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
     // register filters
 
     status = registerInboundV4Filter(wdmDevice);
@@ -331,7 +713,49 @@ NTSTATUS registerWFPStack(DEVICE_OBJECT* wdmDevice) {
         return status;
     }
 
-    return status;
+    // ALE layers
+    status = registerALEInboundV4Filter(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = registerALEOutboundV4Filter(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = registerALEInboundV6Filter(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = registerALEOutboundV6Filter(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    // Stream layers
+    status = registerStreamV4Filter(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = registerStreamV6Filter(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = registerDatagramV4Filter(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = registerDatagramV6Filter(wdmDevice);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS unregisterFilters() {
@@ -363,7 +787,55 @@ NTSTATUS unregisterFilters() {
         return status;
     }
 
-    return status;
+    status = FwpmFilterDeleteById(filterEngineHandle, aleInboundV4FilterID);
+    if (!NT_SUCCESS(status)) {
+        ERR("Could not unregister PortmasterAleInboundV4Filter: rc=0x%08x", status);
+        return status;
+    }
+
+    status = FwpmFilterDeleteById(filterEngineHandle, aleOutboundV4FilterID);
+    if (!NT_SUCCESS(status)) {
+        ERR("Could not unregister PortmasterAleOutboundV4Filter: rc=0x%08x", status);
+        return status;
+    }
+
+    status = FwpmFilterDeleteById(filterEngineHandle, aleInboundV6FilterID);
+    if (!NT_SUCCESS(status)) {
+        ERR("Could not unregister PortmasterAleInboundV6Filter: rc=0x%08x", status);
+        return status;
+    }
+
+    status = FwpmFilterDeleteById(filterEngineHandle, aleOutboundV6FilterID);
+    if (!NT_SUCCESS(status)) {
+        ERR("Could not unregister PortmasterAleOutboundV6Filter: rc=0x%08x", status);
+        return status;
+    }
+
+    status = FwpmFilterDeleteById(filterEngineHandle, streamV4FilterID);
+    if (!NT_SUCCESS(status)) {
+        ERR("Could not unregister PortmasterStreamV4Filter: rc=0x%08x", status);
+        return status;
+    }
+
+    status = FwpmFilterDeleteById(filterEngineHandle, streamV6FilterID);
+    if (!NT_SUCCESS(status)) {
+        ERR("Could not unregister PortmasterStreamV6Filter: rc=0x%08x", status);
+        return status;
+    }
+
+    status = FwpmFilterDeleteById(filterEngineHandle, datagramV4FilterID);
+    if (!NT_SUCCESS(status)) {
+        ERR("Could not unregister PortmasterDatagramV4Filter: rc=0x%08x", status);
+        return status;
+    }
+
+    status = FwpmFilterDeleteById(filterEngineHandle, datagramV6FilterID);
+    if (!NT_SUCCESS(status)) {
+        ERR("Could not unregister PortmasterDatagramV6Filter: rc=0x%08x", status);
+        return status;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS unregisterCallouts() {
@@ -403,5 +875,69 @@ NTSTATUS unregisterCallouts() {
         }
     }
 
-    return status;
+    if (aleInboundV4CalloutRegistered == true) {
+        status = FwpsCalloutUnregisterById(aleInboundV4CalloutID);
+        if (!NT_SUCCESS(status)) {
+            ERR("Could not unregister PortmasterAleInboundV4Callout: rc=0x%08x", status);
+            return status;
+        }
+    }
+
+    if (aleOutboundV4CalloutRegistered == true) {
+        status = FwpsCalloutUnregisterById(aleOutboundV4CalloutID);
+        if (!NT_SUCCESS(status)) {
+            ERR("Could not unregister PortmasterAleOutboundV4Callout: rc=0x%08x", status);
+            return status;
+        }
+    }
+
+    if (aleInboundV6CalloutRegistered == true) {
+        status = FwpsCalloutUnregisterById(aleInboundV6CalloutID);
+        if (!NT_SUCCESS(status)) {
+            ERR("Could not unregister PortmasterAleInboundV6Callout: rc=0x%08x", status);
+            return status;
+        }
+    }
+
+    if (aleOutboundV6CalloutRegistered == true) {
+        status = FwpsCalloutUnregisterById(aleOutboundV6CalloutID);
+        if (!NT_SUCCESS(status)) {
+            ERR("Could not unregister PortmasterAleOutboundV6Callout: rc=0x%08x", status);
+            return status;
+        }
+    }
+
+    if (streamV4CalloutRegistered == true) {
+        status = FwpsCalloutUnregisterById(streamV4CalloutID);
+        if (!NT_SUCCESS(status)) {
+            ERR("Could not unregister PortmasterStreamV4Callout: rc=0x%08x", status);
+            return status;
+        }
+    }
+
+    if (streamV6CalloutRegistered == true) {
+        status = FwpsCalloutUnregisterById(streamV6CalloutID);
+        if (!NT_SUCCESS(status)) {
+            ERR("Could not unregister PortmasterStreamV6Callout: rc=0x%08x", status);
+            return status;
+        }
+    }
+    
+    if (datagramV4CalloutRegistered == true) {
+        status = FwpsCalloutUnregisterById(datagramV4CalloutID);
+        if (!NT_SUCCESS(status)) {
+            ERR("Could not unregister PortmasterDatagramV4Callout: rc=0x%08x", status);
+            return status;
+        }
+    }
+
+    if (datagramV6CalloutRegistered == true) {
+        status = FwpsCalloutUnregisterById(datagramV6CalloutID);
+        if (!NT_SUCCESS(status)) {
+            ERR("Could not unregister PortmasterDatagramV6Callout: rc=0x%08x", status);
+            return status;
+        }
+    }
+
+    return STATUS_SUCCESS;
 }
