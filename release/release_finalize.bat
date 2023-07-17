@@ -15,7 +15,7 @@ echo OPTIONAL:
 echo YOUR TURN: sign .sys (add your sig for additional transparency)
 echo use something along the lines of:
 echo.
-echo signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /a /as %DISTDIR%\portmaster-kext_vX-X-X.sys
+echo signtool sign /sha1 C2CBB3A0256A157FEB08B661D72BF490B68724C4 /tr http://timestamp.digicert.com /td sha256 /fd sha256 /a /as %DISTDIR%\portmaster-kext_vX-X-X.sys
 echo.
 
 echo.
