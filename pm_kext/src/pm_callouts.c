@@ -1058,6 +1058,9 @@ void classifyALEOutboundIPv4(
         packetInfo->processID = 0;
     }
 
+    // Set flag to notify userspace that this is a socket authentication packet.
+    packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
+
     if(wasPacketInjected(packetInfo, layerData)) {
         return;
     }
@@ -1124,6 +1127,9 @@ void classifyALEInboundIPv4(
     } else {
         packetInfo->processID = 0;
     }
+
+    // Set flag to notify userspace that this is a socket authentication packet.
+    packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
 
     if(wasPacketInjected(packetInfo, layerData)) {
         return;
@@ -1202,6 +1208,9 @@ void classifyALEOutboundIPv6(
         packetInfo->processID = 0;
     }
 
+    // Set flag to notify userspace that this is a socket authentication packet.
+    packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
+
     if(wasPacketInjected(packetInfo, layerData)) {
         return;
     }
@@ -1279,6 +1288,9 @@ void classifyALEInboundIPv6(
     } else {
         packetInfo->processID = 0;
     }
+
+    // Set flag to notify userspace that this is a socket authentication packet.
+    packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
 
     if(wasPacketInjected(packetInfo, layerData)) {
         return;
