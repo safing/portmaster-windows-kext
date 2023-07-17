@@ -1183,7 +1183,7 @@ void classifyALEOutboundIPv6(
     UNREFERENCED_PARAMETER(classifyContext);
     UNREFERENCED_PARAMETER(classifyOut);
 
-    // Sanity check 2
+    // Sanity check
     if (!inFixedValues || !inMetaValues) {
         ERR("Invalid parameters");
         return;
@@ -1263,7 +1263,7 @@ void classifyALEInboundIPv6(
     UNREFERENCED_PARAMETER(classifyContext);
     UNREFERENCED_PARAMETER(classifyOut);
 
-    // Sanity check 2
+    // Sanity check
     if (!inFixedValues || !inMetaValues) {
         ERR("Invalid parameters");
         return;
@@ -1351,6 +1351,7 @@ void classifyStreamIPv4(
         return;
     }
 
+    // Collect data from callout metadata.
     PortmasterPacketInfo packetInfo = {0};
     packetInfo.ipV6 = 0;
     packetInfo.localIP[0] = inFixedValues->incomingValue[FWPS_FIELD_STREAM_V4_IP_LOCAL_ADDRESS].value.uint32;
@@ -1359,12 +1360,15 @@ void classifyStreamIPv4(
     packetInfo.remotePort = inFixedValues->incomingValue[FWPS_FIELD_STREAM_V4_IP_REMOTE_PORT].value.uint16;
     packetInfo.protocol = PROTOCOL_TCP;
 
+    // Get stream data for payload size.
     FWPS_STREAM_CALLOUT_IO_PACKET *ioPacket = (FWPS_STREAM_CALLOUT_IO_PACKET*)layerData;
     FWPS_STREAM_DATA *streamData = ioPacket->streamData;
+
     // Check stream direction
     if((streamData->flags & FWPS_STREAM_FLAG_RECEIVE) > 0){
         packetInfo.direction = DIRECTION_INBOUND;
     }
+
     verdictCacheUpdateStats(verdictCacheV4, &packetInfo, streamData->dataLength);
 }
 
@@ -1382,32 +1386,32 @@ void classifyStreamIPv6(
     UNREFERENCED_PARAMETER(filter);
     UNREFERENCED_PARAMETER(flowContext);
     UNREFERENCED_PARAMETER(classifyOut);
-    INFO("IPV6 stream layer");
+
     // Sanity check
     if (!inFixedValues || !inMetaValues) {
         ERR("Invalid parameters");
         return;
     }
 
+    // Collect data from callout metadata.
     PortmasterPacketInfo packetInfo = {0};
-
     packetInfo.ipV6 = 1;
+    packetInfo.localPort = inFixedValues->incomingValue[FWPS_FIELD_STREAM_V6_IP_LOCAL_PORT].value.uint16;
+    packetInfo.remotePort = inFixedValues->incomingValue[FWPS_FIELD_STREAM_V6_IP_REMOTE_PORT].value.uint16;
+    packetInfo.protocol = PROTOCOL_TCP;
+    // Copy local and remote IPs
     NTSTATUS status = copyIPv6(inFixedValues, FWPS_FIELD_STREAM_V6_IP_LOCAL_ADDRESS, packetInfo.localIP);
     if (status != STATUS_SUCCESS) {
         ERR("Could not copy IPv6, status= 0x%x", status);
         return;
     } 
-    packetInfo.localPort = inFixedValues->incomingValue[FWPS_FIELD_STREAM_V6_IP_LOCAL_PORT].value.uint16;
-
     status = copyIPv6(inFixedValues, FWPS_FIELD_STREAM_V6_IP_REMOTE_ADDRESS, packetInfo.remoteIP);
     if (status != STATUS_SUCCESS) {
         ERR("Could not copy IPv6, status= 0x%x", status);
         return;
     } 
-    packetInfo.remotePort = inFixedValues->incomingValue[FWPS_FIELD_STREAM_V6_IP_REMOTE_PORT].value.uint16;
 
-    packetInfo.protocol = PROTOCOL_TCP;
-
+    // Get stream data for payload size.
     FWPS_STREAM_CALLOUT_IO_PACKET *ioPacket = (FWPS_STREAM_CALLOUT_IO_PACKET*)layerData;
     FWPS_STREAM_DATA *streamData = ioPacket->streamData;
 
@@ -1415,8 +1419,8 @@ void classifyStreamIPv6(
     if((streamData->flags & FWPS_STREAM_FLAG_RECEIVE) > 0){
         packetInfo.direction = DIRECTION_INBOUND;
     }
+
     verdictCacheUpdateStats(verdictCacheV6, &packetInfo, streamData->dataLength);
-    INFO("IPV6 stream layer2");
 }
 
 void classifyDatagramIPv4(
@@ -1440,6 +1444,7 @@ void classifyDatagramIPv4(
         return;
     }
 
+    // Collect data from callout metadata.
     PortmasterPacketInfo packetInfo = {0};
     packetInfo.ipV6 = 0;
     packetInfo.localIP[0] = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V4_IP_LOCAL_ADDRESS].value.uint32;
@@ -1447,9 +1452,9 @@ void classifyDatagramIPv4(
     packetInfo.remoteIP[0] = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V4_IP_REMOTE_ADDRESS].value.uint32;
     packetInfo.remotePort = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V4_IP_REMOTE_PORT].value.uint16;
     packetInfo.protocol = PROTOCOL_UDP;
-
     packetInfo.direction = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V4_DIRECTION].value.uint8;
 
+    // Get payload size.
     UINT64 payload = 0;
     PNET_BUFFER_LIST nbl = (PNET_BUFFER_LIST) layerData;
     for (; nbl != NULL; nbl = NET_BUFFER_LIST_NEXT_NBL(nbl)) {
@@ -1478,37 +1483,45 @@ void classifyDatagramIPv6(
     UNREFERENCED_PARAMETER(filter);
     UNREFERENCED_PARAMETER(flowContext);
     UNREFERENCED_PARAMETER(classifyOut);
+
     // Sanity check
     if (!inFixedValues || !inMetaValues) {
         ERR("Invalid parameters");
         return;
     }
 
+    // Collect data from callout metadata.
     PortmasterPacketInfo packetInfo = {0};
-
     packetInfo.ipV6 = 1;
+    packetInfo.localPort = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V6_IP_LOCAL_PORT].value.uint16;
+    packetInfo.remotePort = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V6_IP_REMOTE_PORT].value.uint16;
+    packetInfo.protocol = PROTOCOL_UDP;
+    packetInfo.direction = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V6_DIRECTION].value.uint8;
+    // Copy local and remote IPs
     NTSTATUS status = copyIPv6(inFixedValues, FWPS_FIELD_DATAGRAM_DATA_V6_IP_LOCAL_ADDRESS, packetInfo.localIP);
     if (status != STATUS_SUCCESS) {
         ERR("Could not copy IPv6, status= 0x%x", status);
         return;
     } 
-    packetInfo.localPort = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V6_IP_LOCAL_PORT].value.uint16;
-
     status = copyIPv6(inFixedValues, FWPS_FIELD_DATAGRAM_DATA_V6_IP_REMOTE_ADDRESS, packetInfo.remoteIP);
     if (status != STATUS_SUCCESS) {
         ERR("Could not copy IPv6, status= 0x%x", status);
         return;
     } 
-    packetInfo.remotePort = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V6_IP_REMOTE_PORT].value.uint16;
 
-    packetInfo.protocol = PROTOCOL_UDP;
+    // Get payload size.
+    UINT64 payload = 0;
+    PNET_BUFFER_LIST nbl = (PNET_BUFFER_LIST) layerData;
+    for (; nbl != NULL; nbl = NET_BUFFER_LIST_NEXT_NBL(nbl)) {
 
-    // FWPS_STREAM_CALLOUT_IO_PACKET *ioPacket = (FWPS_STREAM_CALLOUT_IO_PACKET*)layerData;
-    // FWPS_STREAM_DATA *streamData = ioPacket->streamData;
-
-    // Check stream direction
-    packetInfo.direction = inFixedValues->incomingValue[FWPS_FIELD_DATAGRAM_DATA_V6_DIRECTION].value.uint8;
-    verdictCacheUpdateStats(verdictCacheV6, &packetInfo, 1);
+        // Get first netbuffer from list.
+        PNET_BUFFER nb = NET_BUFFER_LIST_FIRST_NB(nbl);
+        // Iterate over net buffers.
+        for (; nb != NULL; nb = NET_BUFFER_NEXT_NB(nb)) { 
+            payload += nb->DataLength;
+        }
+    }
+    verdictCacheUpdateStats(verdictCacheV4, &packetInfo, payload);
 }
 
 void clearCache() {
