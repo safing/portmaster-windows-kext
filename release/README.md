@@ -12,10 +12,9 @@ Get one here: https://docs.microsoft.com/en-us/windows-hardware/drivers/dashboar
   - `makecab`
   - `signtool` from Win SDK 8.1 or newer (for the `remove` command)
 
-### Replace all versions
+### Update version
 
-There version identifier is in the files:
-- Version.props
+The version is defined in `Version.props` in the repo root.
 
 ### Pre-Packaging
 

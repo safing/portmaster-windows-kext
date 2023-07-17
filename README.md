@@ -46,24 +46,28 @@ This is how packets are handled:
 
 The Windows Portmaster Kernel Extension is currently only developed and tested for the amd64 (64-bit) architecture.
 
-Prerequesites:
-- WDK (https://docs.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk)
-  - Step 1: Install Visual Studio 2022
-  - Step 2: Install Windows 11, version 22H2 SDK
-  - Step 3: Install Windows 11, version 22H2 WDK
-    - When ask to install Visual studio extension say yes
+__Prerequesites:__
 
-Build driver and library:
+- Visual Studio 2022
+    - Install C++ and Windows 11 SDK (22H2) components
+- Windows 11 WDK (22H2) (https://docs.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk)
+    - Install Visual Studio extension
 
-    :: open a Visual Studio 2022 Developer Command Prompt (usualy located in C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat)
-    release_build.bat
-    :: built driver lands in install\WDDK\x64\Release
+__Build driver and library:__
 
-    :: shortcut to build, sign and copy the driver to portmaster install directory:
-    deploy.bat
+- Launch Dev Env
+    - `C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\LaunchDevCmd.bat`
+- Build driver (put into `install\WDDK\x64\Release`)
+    - `release_build.bat`
+- Or, use the shortcut to build, test-sign and copy to portmaster install dir
+    - `deploy.bat`
 
-Test Signing:  
-In order to test the driver on your machine, you will have to test sign it (starting with Windows 10). Here is how you can do this:
+__Setup Test Signing:__
+
+In order to test the driver on your machine, you will have to test sign it (starting with Windows 10).
+
+
+Create a new certificate for test signing: (This is already done automatically with Win11 Visual Studio).
 
     :: Open a *x64 Free Build Environment* console as Administrator.
 
@@ -75,6 +79,9 @@ In order to test the driver on your machine, you will have to test sign it (star
 
     :: Sign pm_kernel64.sys with the test certificate:
     SignTool sign /v /s TestCertStoreName /n TestCertName pm_kernel64.sys
+
+
+Enable Test Signing on the dev machine:
 
     :: Before you can load test-signed drivers, you must enable Windows test mode. To do this, run this command:
     Bcdedit.exe -set TESTSIGNING ON

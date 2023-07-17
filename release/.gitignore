@@ -1,6 +1,6 @@
 PortmasterKext
-PortmasterKext64*
-PortmasterKext.cab
+PortmasterKext*.cab
+PortmasterKext*.zip
 Signable*
 Signed*
 dist
