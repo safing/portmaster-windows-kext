@@ -472,8 +472,28 @@ FWP_ACTION_TYPE classifySingle(
             packetInfo->flags |= PM_STATUS_FAST_TRACK_PERMITTED;
 
             INFO("Fast-tracking %s", printPacketInfo(packetInfo));
-        }
-        else {
+        } else {
+            // Check for which packets we expect to get something from the ALE layer.
+
+            // TODO:
+            // This would work correctly, but the first packet is dropped until a verdict is reached.
+            // Thus, the packet does not continue to traverse the WFP stack and does not reach the ALE
+            // layer at all.
+            // Docs for TCP: https://learn.microsoft.com/en-us/windows/win32/fwp/tcp-packet-flows
+            /*
+            if (packetInfo->direction == DIRECTION_INBOUND) {
+                // For outbound connections, the ALE layer hits first.
+
+                // We expect ALE layer info from TCP and UDP connections.
+                switch (packetInfo->protocol) {
+                    case PROTOCOL_TCP:
+                    case PROTOCOL_UDP:
+                        packetInfo->flags |= PM_STATUS_EXPECT_SOCKET_AUTH;
+                        break;
+                }
+            }
+            */
+
             INFO("Getting verdict for %s", printPacketInfo(packetInfo));
         }
 

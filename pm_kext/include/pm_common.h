@@ -55,6 +55,7 @@ typedef struct {
  */
 #define PM_STATUS_FAST_TRACK_PERMITTED 0x01
 #define PM_STATUS_SOCKET_AUTH          0x02
+#define PM_STATUS_EXPECT_SOCKET_AUTH   0x04
 
 /*
  * IPv4 Header.
