@@ -507,7 +507,7 @@ int verdictCacheWriteBandwidthStats(VerdictCache *verdictCache, PortmasterConnec
     for (VerdictCacheItem *item = verdictCache->map; item != NULL; item = item->hh.next) {
         // Caller buffer is already full
         if(i >= size) {
-            continue;
+            break;
         }
 
         // We dont need empty entries
