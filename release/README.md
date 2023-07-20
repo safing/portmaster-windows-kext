@@ -37,7 +37,7 @@ The version is defined in `Version.props` in the repo root.
 ### Let Microsoft Sign
 
 - Go to https://partner.microsoft.com/en-us/dashboard/hardware/driver/New
-- Enter "PortmasterKext v1.0.11 #1" as the product name
+- Enter "PortmasterKext v1.1.1 #1" as the product name
 - Upload `PortmasterKext.cab`
 - Select the Windows 10 versions that you compiled and tested on
 - Wait for the process to finish, download the `.zip`, extract it and rename to folder from `Signed_xxx` to `Signed`.

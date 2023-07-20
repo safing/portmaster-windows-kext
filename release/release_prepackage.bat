@@ -2,6 +2,7 @@
 set CABDIR=PortmasterKext
 set INSTALL_WDDK_AMD64=..\install\WDDK\x64\Release
 set INSTALL_DLL_AMD64=..\install\DLL\x64\Release
+set DISTDIR=dist\windows_amd64\kext
 
 echo.
 echo =====
@@ -22,7 +23,7 @@ mkdir %CABDIR%\amd64
 copy %INSTALL_WDDK_AMD64%\pm_kernel64.sys %CABDIR%\amd64\PortmasterKext64.sys
 copy %INSTALL_WDDK_AMD64%\pm_kernel64.pdb %CABDIR%\amd64\PortmasterKext64.pdb
 copy %INSTALL_WDDK_AMD64%\PortmasterKext64.inf %CABDIR%\amd64\PortmasterKext64.inf
-
+copy %CABDIR%\amd64\PortmasterKext64.pdb %DISTDIR%\portmaster-kext_vX-X-X.pdb
 echo.
 echo =====
 echo removing existing signatures ...
