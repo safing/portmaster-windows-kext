@@ -3,8 +3,8 @@
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros">
     <PM_VERSION_MAJOR>1</PM_VERSION_MAJOR>
-    <PM_VERSION_MINOR>0</PM_VERSION_MINOR>
-    <PM_VERSION_REVISION>17</PM_VERSION_REVISION>
+    <PM_VERSION_MINOR>1</PM_VERSION_MINOR>
+    <PM_VERSION_REVISION>1</PM_VERSION_REVISION>
     <PM_VERSION_BUILD>0</PM_VERSION_BUILD>
   </PropertyGroup>
   <PropertyGroup />
