@@ -352,6 +352,11 @@ NTSTATUS driverDeviceControl(__in PDEVICE_OBJECT pDeviceObject, __inout PIRP Irp
                 Irp->IoStatus.Information = size;
                 IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
+                if(dentry->packet->processID != 0) {
+                    // Packet comes from the ALE layer and it's not saved in cache. It's not needed anymore.
+                    portmasterFree(dentry->packet);
+                }
+
                 // Now that the contents of the list-entry is copied, free memory
                 portmasterFree(dentry);
                 return STATUS_SUCCESS;

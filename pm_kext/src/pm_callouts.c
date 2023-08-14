@@ -506,7 +506,8 @@ FWP_ACTION_TYPE classifySingle(
         PortmasterPacketInfo* copiedPacketInfo = portmasterMalloc(sizeof(PortmasterPacketInfo), false);
         if (!copiedPacketInfo) {
             ERR("Insufficient Resources for allocating copiedPacketInfo");
-            // TODO: free other allocated memory.
+            portmasterFree(dentry);
+            // TODO: free other allocated memory?
             return FWP_ACTION_NONE;
         }
         RtlCopyMemory(copiedPacketInfo, packetInfo, sizeof(PortmasterPacketInfo));
@@ -527,12 +528,12 @@ FWP_ACTION_TYPE classifySingle(
             if (rc != 0) {
                 ERR("failed to add verdict: %d", rc);
                 portmasterFree(copiedPacketInfo);
-                // TODO: free other allocated memory.
+                portmasterFree(dentry);
+                // TODO: free other allocated memory?
                 return FWP_ACTION_NONE;
             }
 
-        }
-        else {
+        } else {
             // If not fast-tracked, copy the packet and register it.
 
             //Inbound traffic requires special treatment - this bit shifting is a special source of error ;-)
@@ -540,7 +541,9 @@ FWP_ACTION_TYPE classifySingle(
                 status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
                 if (!NT_SUCCESS(status)) {
                     ERR("failed to retreat net buffer data start");
-                    // TODO: free other allocated memory.
+                    portmasterFree(copiedPacketInfo);
+                    portmasterFree(dentry);
+                    // TODO: free other allocated memory?
                     return FWP_ACTION_NONE;
                 }
             }
@@ -549,7 +552,9 @@ FWP_ACTION_TYPE classifySingle(
             status = copyPacketDataFromNB(nb, 0, &data, &dataLength);
             if (!NT_SUCCESS(status)) {
                 ERR("copyPacketDataFromNB 2: %d", status);
-                // TODO: free other allocated memory.
+                portmasterFree(copiedPacketInfo);
+                portmasterFree(dentry);
+                // TODO: free other allocated memory?
                 return FWP_ACTION_NONE;
             }
             copiedPacketInfo->packetSize = (UINT32)dataLength;
@@ -1082,6 +1087,7 @@ void classifyALEOutboundIPv4(
     packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
 
     if(wasPacketInjected(packetInfo, layerData)) {
+        portmasterFree(packetInfo);
         return;
     }
 
@@ -1152,6 +1158,7 @@ void classifyALEInboundIPv4(
     packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
 
     if(wasPacketInjected(packetInfo, layerData)) {
+        portmasterFree(packetInfo);
         return;
     }
 
@@ -1232,6 +1239,7 @@ void classifyALEOutboundIPv6(
     packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
 
     if(wasPacketInjected(packetInfo, layerData)) {
+        portmasterFree(packetInfo);
         return;
     }
 
@@ -1313,6 +1321,7 @@ void classifyALEInboundIPv6(
     packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
 
     if(wasPacketInjected(packetInfo, layerData)) {
+        portmasterFree(packetInfo);
         return;
     }
 
