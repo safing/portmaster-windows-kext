@@ -506,7 +506,8 @@ FWP_ACTION_TYPE classifySingle(
         PortmasterPacketInfo* copiedPacketInfo = portmasterMalloc(sizeof(PortmasterPacketInfo), false);
         if (!copiedPacketInfo) {
             ERR("Insufficient Resources for allocating copiedPacketInfo");
-            // TODO: free other allocated memory.
+            portmasterFree(dentry);
+            // TODO: free other allocated memory?
             return FWP_ACTION_NONE;
         }
         RtlCopyMemory(copiedPacketInfo, packetInfo, sizeof(PortmasterPacketInfo));
@@ -527,12 +528,12 @@ FWP_ACTION_TYPE classifySingle(
             if (rc != 0) {
                 ERR("failed to add verdict: %d", rc);
                 portmasterFree(copiedPacketInfo);
-                // TODO: free other allocated memory.
+                portmasterFree(dentry);
+                // TODO: free other allocated memory?
                 return FWP_ACTION_NONE;
             }
 
-        }
-        else {
+        } else {
             // If not fast-tracked, copy the packet and register it.
 
             //Inbound traffic requires special treatment - this bit shifting is a special source of error ;-)
@@ -540,7 +541,9 @@ FWP_ACTION_TYPE classifySingle(
                 status = NdisRetreatNetBufferDataStart(nb, ipHeaderSize, 0, NULL);
                 if (!NT_SUCCESS(status)) {
                     ERR("failed to retreat net buffer data start");
-                    // TODO: free other allocated memory.
+                    portmasterFree(copiedPacketInfo);
+                    portmasterFree(dentry);
+                    // TODO: free other allocated memory?
                     return FWP_ACTION_NONE;
                 }
             }
@@ -549,7 +552,9 @@ FWP_ACTION_TYPE classifySingle(
             status = copyPacketDataFromNB(nb, 0, &data, &dataLength);
             if (!NT_SUCCESS(status)) {
                 ERR("copyPacketDataFromNB 2: %d", status);
-                // TODO: free other allocated memory.
+                portmasterFree(copiedPacketInfo);
+                portmasterFree(dentry);
+                // TODO: free other allocated memory?
                 return FWP_ACTION_NONE;
             }
             copiedPacketInfo->packetSize = (UINT32)dataLength;
@@ -1038,9 +1043,10 @@ void classifyALEOutboundIPv4(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
 
-    UNREFERENCED_PARAMETER(flowContext);
-    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(layerData);
     UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(flowContext);
     UNREFERENCED_PARAMETER(classifyOut);
 
     // Sanity check 2
@@ -1081,10 +1087,6 @@ void classifyALEOutboundIPv4(
     // Set flag to notify userspace that this is a socket authentication packet.
     packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
 
-    if(wasPacketInjected(packetInfo, layerData)) {
-        return;
-    }
-
     INFO("connection ALE layer process ID: %d", packetInfo->processID);
 
     // Allocate queue entry and copy packetInfo
@@ -1108,9 +1110,10 @@ void classifyALEInboundIPv4(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
 
-    UNREFERENCED_PARAMETER(flowContext);
-    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(layerData);
     UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(flowContext);
     UNREFERENCED_PARAMETER(classifyOut);
 
     // Sanity check 2
@@ -1151,10 +1154,6 @@ void classifyALEInboundIPv4(
     // Set flag to notify userspace that this is a socket authentication packet.
     packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
 
-    if(wasPacketInjected(packetInfo, layerData)) {
-        return;
-    }
-
     INFO("connection ALE layer process ID: %d", packetInfo->processID);
 
     // Allocate queue entry and copy packetInfo
@@ -1178,9 +1177,10 @@ void classifyALEOutboundIPv6(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
 
-    UNREFERENCED_PARAMETER(flowContext);
-    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(layerData);
     UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(flowContext);
     UNREFERENCED_PARAMETER(classifyOut);
 
     // Sanity check
@@ -1231,10 +1231,6 @@ void classifyALEOutboundIPv6(
     // Set flag to notify userspace that this is a socket authentication packet.
     packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
 
-    if(wasPacketInjected(packetInfo, layerData)) {
-        return;
-    }
-
     INFO("connection ALE layer process ID: %d", packetInfo->processID);
 
     // Allocate queue entry and copy packetInfo
@@ -1258,9 +1254,10 @@ void classifyALEInboundIPv6(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
 
-    UNREFERENCED_PARAMETER(flowContext);
-    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(layerData);
     UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(flowContext);
     UNREFERENCED_PARAMETER(classifyOut);
 
     // Sanity check
@@ -1311,10 +1308,6 @@ void classifyALEInboundIPv6(
 
     // Set flag to notify userspace that this is a socket authentication packet.
     packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
-
-    if(wasPacketInjected(packetInfo, layerData)) {
-        return;
-    }
 
     INFO("connection ALE layer process ID: %d", packetInfo->processID);
 

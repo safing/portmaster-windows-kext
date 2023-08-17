@@ -20,8 +20,8 @@ echo.
 echo =====
 echo copying files ...
 mkdir %CABDIR%\amd64
-copy %INSTALL_WDDK_AMD64%\pm_kernel64.sys %CABDIR%\amd64\PortmasterKext64.sys
-copy %INSTALL_WDDK_AMD64%\pm_kernel64.pdb %CABDIR%\amd64\PortmasterKext64.pdb
+copy %INSTALL_WDDK_AMD64%\pm_kernel_x64.sys %CABDIR%\amd64\PortmasterKext64.sys
+copy %INSTALL_WDDK_AMD64%\pm_kernel_x64.pdb %CABDIR%\amd64\PortmasterKext64.pdb
 copy %INSTALL_WDDK_AMD64%\PortmasterKext64.inf %CABDIR%\amd64\PortmasterKext64.inf
 copy %CABDIR%\amd64\PortmasterKext64.pdb %DISTDIR%\portmaster-kext_vX-X-X.pdb
 echo.

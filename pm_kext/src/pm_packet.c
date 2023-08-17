@@ -451,7 +451,7 @@ static NTSTATUS sendICMPBlockedPacket(PortmasterPacketInfo* packetInfo, void *or
     if(useLocalHost) {
         injectDirection = DIRECTION_OUTBOUND;
     }
-    NTSTATUS status = injectPacketWithHandle(handle, packetInfo, injectDirection, icmpPacket, packetLength);
+    NTSTATUS status = injectPacketWithHandle(handle, packetInfo, injectDirection, icmpPacket, packetLength); // this call will free the packet even if the inject fails
     if (!NT_SUCCESS(status)) {
         ERR("sendICMPBlockedPacket -> FwpsInjectNetworkSendAsync or FwpsInjectNetworkReceiveAsync returned %d", status);
     }

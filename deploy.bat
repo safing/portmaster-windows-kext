@@ -1,5 +1,5 @@
 echo Compile, Sign and Copy the Kernel Driver
-set WDDK_SOURCE=install\WDDK\x64\Debug\pm_kernel64.sys
+set WDDK_SOURCE=install\WDDK\x64\Debug\pm_kernel_x64.sys
 del %WDDK_SOURCE%
 
 msbuild /t:Clean /p:Configuration=Debug /p:Platform=x64 portmaster-windows-kext.sln
