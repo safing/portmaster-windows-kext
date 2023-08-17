@@ -87,6 +87,12 @@ Enable Test Signing on the dev machine:
     Bcdedit.exe -set TESTSIGNING ON
     :: Then, restart Windows. For more information, see The TESTSIGNING Boot Configuration Option.
 
+__Debugging__
+
+Monitor memory usage with:
+
+    "C:\Program Files (x86)\Windows Kits\10\Tools\10.0.22621.0\x64\poolmon.exe" /iPMas
+
 ### Releasing
 
 Please check the `release` directory for further information on releasing the Portmaster Kernel Extension.
