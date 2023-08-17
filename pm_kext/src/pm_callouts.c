@@ -1043,9 +1043,10 @@ void classifyALEOutboundIPv4(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
 
-    UNREFERENCED_PARAMETER(flowContext);
-    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(layerData);
     UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(flowContext);
     UNREFERENCED_PARAMETER(classifyOut);
 
     // Sanity check 2
@@ -1086,11 +1087,6 @@ void classifyALEOutboundIPv4(
     // Set flag to notify userspace that this is a socket authentication packet.
     packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
 
-    if(wasPacketInjected(packetInfo, layerData)) {
-        portmasterFree(packetInfo);
-        return;
-    }
-
     INFO("connection ALE layer process ID: %d", packetInfo->processID);
 
     // Allocate queue entry and copy packetInfo
@@ -1114,9 +1110,10 @@ void classifyALEInboundIPv4(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
 
-    UNREFERENCED_PARAMETER(flowContext);
-    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(layerData);
     UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(flowContext);
     UNREFERENCED_PARAMETER(classifyOut);
 
     // Sanity check 2
@@ -1157,11 +1154,6 @@ void classifyALEInboundIPv4(
     // Set flag to notify userspace that this is a socket authentication packet.
     packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
 
-    if(wasPacketInjected(packetInfo, layerData)) {
-        portmasterFree(packetInfo);
-        return;
-    }
-
     INFO("connection ALE layer process ID: %d", packetInfo->processID);
 
     // Allocate queue entry and copy packetInfo
@@ -1185,9 +1177,10 @@ void classifyALEOutboundIPv6(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
 
-    UNREFERENCED_PARAMETER(flowContext);
-    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(layerData);
     UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(flowContext);
     UNREFERENCED_PARAMETER(classifyOut);
 
     // Sanity check
@@ -1238,11 +1231,6 @@ void classifyALEOutboundIPv6(
     // Set flag to notify userspace that this is a socket authentication packet.
     packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
 
-    if(wasPacketInjected(packetInfo, layerData)) {
-        portmasterFree(packetInfo);
-        return;
-    }
-
     INFO("connection ALE layer process ID: %d", packetInfo->processID);
 
     // Allocate queue entry and copy packetInfo
@@ -1266,9 +1254,10 @@ void classifyALEInboundIPv6(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut) {
 
-    UNREFERENCED_PARAMETER(flowContext);
-    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(layerData);
     UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(flowContext);
     UNREFERENCED_PARAMETER(classifyOut);
 
     // Sanity check
@@ -1319,11 +1308,6 @@ void classifyALEInboundIPv6(
 
     // Set flag to notify userspace that this is a socket authentication packet.
     packetInfo->flags |= PM_STATUS_SOCKET_AUTH;
-
-    if(wasPacketInjected(packetInfo, layerData)) {
-        portmasterFree(packetInfo);
-        return;
-    }
 
     INFO("connection ALE layer process ID: %d", packetInfo->processID);
 
